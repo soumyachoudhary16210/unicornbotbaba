@@ -11,8 +11,7 @@ Features:
   - Material Request & Bug Report Submissions with Live Status Tracking
   - Saved Goods / Bookmarks
   - Automated Notifications on Admin Replies & Updates
-  - Master Admin Controls (Passkey: BABAUNICORN16) with 1-Click Replies,
-    Product Uploads, Broadcasts & Maintenance Toggles
+  - Direct Cloud Downloads & Community Explorer
 ==============================================================================
 """
 
@@ -33,6 +32,7 @@ from telegram import (
     KeyboardButton,
     ReplyKeyboardRemove,
     constants,
+    BotCommand,
 )
 from telegram.ext import (
     ApplicationBuilder,
@@ -62,9 +62,7 @@ REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/its_vivek
 FIREBASE_RTDB_URL = os.getenv(
     "FIREBASE_RTDB_URL", "https://unicorn-goods-default-rtdb.firebaseio.com"
 ).rstrip("/")
-MASTER_PASSKEY = os.getenv("MASTER_PASSKEY", "BABAUNICORN16")
-
-# In-memory session tracking for active admins & notified requests
+# In-memory session tracking for active users & notified requests
 ADMIN_USER_IDS = set()
 NOTIFIED_REQUEST_STATUS: Dict[str, str] = {}
 NOTIFIED_REPORT_STATUS: Dict[str, str] = {}
@@ -77,14 +75,7 @@ LAST_SEEN_NOTIF_TS = int(time.time() * 1000)
     REQ_DETAILS,
     REP_REASON,
     REP_DETAILS,
-    ADMIN_REPLY_INPUT,
-    PROD_TITLE_INPUT,
-    PROD_CAT_INPUT,
-    PROD_FILE_INPUT,
-    PROD_IMG_INPUT,
-    PROD_DESC_INPUT,
-    BROADCAST_INPUT,
-) = range(12)
+) = range(5)
 
 # -----------------------------------------------------------------------------
 # 3. FIREBASE REALTIME DATABASE CLIENT (ASYNC REST API)
@@ -358,8 +349,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "📋 <b>/activity:</b> Track your submitted requests and view admin replies.\n"
         "⭐ <b>/saved:</b> View your bookmarked materials.\n"
         "ℹ️ <b>/about:</b> Community guidelines, mission & contact links.\n"
-        "📢 <b>/announcement:</b> View latest platform announcements.\n"
-        "🔑 <b>/admin:</b> Admin login (Master Pass: <code>BABAUNICORN16</code>)."
+        "📢 <b>/announcement:</b> View latest platform announcements."
     )
     await update.effective_message.reply_text(help_text, parse_mode=constants.ParseMode.HTML)
 
@@ -862,7 +852,20 @@ async def report_details_received(update: Update, context: ContextTypes.DEFAULT_
 # -----------------------------------------------------------------------------
 # 11. USER ACTIVITY, SAVED GOODS & ABOUT INFO
 # -----------------------------------------------------------------------------
-async def show_user_activity(query, user_id: int) -> None:
+async def render_text_response(target, text: str, reply_markup=None) -> None:
+    """Renders text response whether target is a CallbackQuery or a Message object."""
+    if hasattr(target, "edit_message_text"):
+        try:
+            await target.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=reply_markup)
+            return
+        except Exception:
+            pass
+    if hasattr(target, "reply_text"):
+        await target.reply_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=reply_markup)
+    elif hasattr(target, "message") and hasattr(target.message, "reply_text"):
+        await target.message.reply_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=reply_markup)
+
+async def show_user_activity(target, user_id: int) -> None:
     # 1. Fetch user requests
     raw_reqs = await FirebaseRTDB.get("requests") or {}
     user_reqs = []
@@ -923,9 +926,9 @@ async def show_user_activity(query, user_id: int) -> None:
         [InlineKeyboardButton("➕ Submit New Request", callback_data="nav:request")],
         [InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")],
     ]
-    await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
+    await render_text_response(target, text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def show_saved_goods(query, user_id: int) -> None:
+async def show_saved_goods(target, user_id: int) -> None:
     raw_saved = await FirebaseRTDB.get(f"bot_saved/{user_id}") or {}
     if not raw_saved:
         text = (
@@ -938,7 +941,7 @@ async def show_saved_goods(query, user_id: int) -> None:
             [InlineKeyboardButton("📚 Browse Categories", callback_data="nav:categories")],
             [InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")],
         ]
-        await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
+        await render_text_response(target, text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     all_products = await FirebaseRTDB.get_all_products_raw()
@@ -958,9 +961,9 @@ async def show_saved_goods(query, user_id: int) -> None:
         ])
 
     buttons.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")])
-    await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    await render_text_response(target, text, reply_markup=InlineKeyboardMarkup(buttons))
 
-async def show_about_info(query) -> None:
+async def show_about_info(target) -> None:
     about = await FirebaseRTDB.get("settings/about") or {}
     branding = await FirebaseRTDB.get("settings/branding") or {}
 
@@ -987,9 +990,9 @@ async def show_about_info(query) -> None:
         [InlineKeyboardButton(contact_text, url=contact_link)],
         [InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")],
     ]
-    await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    await render_text_response(target, text, reply_markup=InlineKeyboardMarkup(buttons))
 
-async def show_announcements(query) -> None:
+async def show_announcements(target) -> None:
     popup = await FirebaseRTDB.get("settings/popup") or {}
     p_title = popup.get("title", "Announcement")
     p_msg = popup.get("message", "No announcements at this time. Stay tuned for updates!")
@@ -1007,207 +1010,67 @@ async def show_announcements(query) -> None:
         buttons.append([InlineKeyboardButton(p_link_text or "Explore Now ↗", url=p_link)])
     buttons.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")])
 
-    await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    await render_text_response(target, text, reply_markup=InlineKeyboardMarkup(buttons))
 
-# -----------------------------------------------------------------------------
-# 12. MASTER ADMIN CONTROLS (PASSKEY: BABAUNICORN16)
-# -----------------------------------------------------------------------------
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    args = context.args or []
-    input_pass = args[0] if args else ""
-
-    if input_pass == MASTER_PASSKEY or user.id in ADMIN_USER_IDS:
-        ADMIN_USER_IDS.add(user.id)
-        await show_admin_dashboard(update.effective_message, user.id)
-    else:
-        text = (
-            "🔑 <b>Administrator Authentication Required</b>\n\n"
-            "Please send the master passkey in this format:\n"
-            "<code>/admin BABAUNICORN16</code>"
-        )
-        await update.effective_message.reply_text(text, parse_mode=constants.ParseMode.HTML)
-
-async def show_admin_dashboard(message, user_id: int) -> None:
-    # Stats
-    products = await FirebaseRTDB.get_all_products_raw()
-    pub_count = sum(1 for p in products if p.get("status") == "published")
-    draft_count = len(products) - pub_count
-
-    requests_raw = await FirebaseRTDB.get("requests") or {}
-    pending_reqs = sum(1 for r in requests_raw.values() if isinstance(r, dict) and r.get("status") == "pending")
-
-    reports_raw = await FirebaseRTDB.get("reports") or {}
-    pending_reps = sum(1 for r in reports_raw.values() if isinstance(r, dict) and r.get("status") == "pending")
-
-    bot_users = await FirebaseRTDB.get_all_bot_users()
-
-    text = (
-        "👑 <b>UNICORN GOODS — Master Admin Control Panel</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 <b>Platform Statistics:</b>\n"
-        f"• Published Products: <b>{pub_count}</b> (Drafts: {draft_count})\n"
-        f"• Pending Requests: <b>{pending_reqs}</b>\n"
-        f"• Pending Reports: <b>{pending_reps}</b>\n"
-        f"• Active Telegram Users: <b>{len(bot_users)}</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "👇 <i>Choose an action to manage:</i>"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(f"📋 Review Requests ({pending_reqs})", callback_data="adm:requests"),
-            InlineKeyboardButton(f"🚨 Review Reports ({pending_reps})", callback_data="adm:reports"),
-        ],
-        [
-            InlineKeyboardButton("➕ Add Product to Store", callback_data="adm:add_product"),
-            InlineKeyboardButton("📢 Send Broadcast", callback_data="adm:broadcast"),
-        ],
-        [
-            InlineKeyboardButton("🛠️ Toggle Maintenance", callback_data="adm:maint_toggle"),
-            InlineKeyboardButton("🏠 User Storefront", callback_data="nav:menu"),
-        ],
-    ]
-    await message.reply_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def handle_admin_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    user = query.from_user
-    if user.id not in ADMIN_USER_IDS:
-        await query.answer("Unauthorized. Please send /admin BABAUNICORN16 first.", show_alert=True)
+    is_member = await check_channel_membership(user.id, context.bot)
+    if not is_member:
+        await send_fsub_prompt(update, context)
         return
 
-    data = query.data
-    await query.answer()
-
-    if data == "adm:requests":
-        requests_raw = await FirebaseRTDB.get("requests") or {}
-        pending = [(rid, r) for rid, r in requests_raw.items() if isinstance(r, dict) and r.get("status") == "pending"]
-        if not pending:
-            await query.edit_message_text(
-                "✅ <b>No pending requests!</b> All requests have been reviewed.",
-                parse_mode=constants.ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="adm:home")]]),
-            )
-            return
-
-        rid, r = pending[0]
-        item_name = r.get("itemName", "Untitled")
-        user_name = r.get("userName", "Anonymous")
-        category = r.get("category", "General")
-        details = r.get("details", "None")
-
+    query_text = " ".join(context.args).strip() if context.args else ""
+    if query_text:
+        update.effective_message.text = query_text
+        await handle_user_text_search(update, context)
+    else:
         text = (
-            f"📋 <b>Pending Request (1 of {len(pending)})</b>\n"
+            "🔍 <b>Universal Material Search</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📦 <b>Item:</b> {html.escape(item_name)}\n"
-            f"🏷️ <b>Category:</b> {html.escape(category)}\n"
-            f"👤 <b>From:</b> {html.escape(user_name)} ({r.get('telegramUsername', '')})\n"
-            f"📝 <b>Details:</b> {html.escape(details)}\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👇 <i>Select an action for this request:</i>"
+            "Simply type ANY book, note, app or tool name directly into this chat!\n\n"
+            "<i>Or search with:</i> <code>/search &lt;item name&gt;</code>\n\n"
+            "⚡ <i>Go ahead and type whatever you are looking for!</i>"
         )
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Approve", callback_data=f"adm_act_req:{rid}:approved"),
-                InlineKeyboardButton("❌ Reject", callback_data=f"adm_act_req:{rid}:rejected"),
-            ],
-            [InlineKeyboardButton("💬 Custom Reply & Approve", callback_data=f"adm_rep_req:{rid}")],
-            [InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="adm:home")],
-        ]
-        await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
-
-    elif data.startswith("adm_act_req:"):
-        _, rid, new_status = data.split(":")
-        await FirebaseRTDB.patch(f"requests/{rid}", {
-            "status": new_status,
-            "adminReply": "Approved! Material will be available shortly." if new_status == "approved" else "Request declined by admin.",
-            "updatedAt": int(time.time() * 1000),
-        })
-        await query.answer(f"Request marked as {new_status}!", show_alert=True)
-        # Notify user directly
-        req_data = await FirebaseRTDB.get(f"requests/{rid}")
-        if req_data and req_data.get("telegramUserId"):
-            try:
-                alert_text = (
-                    f"🔔 <b>Update on your UNICORN GOODS Request!</b>\n\n"
-                    f"📦 <b>Item:</b> {html.escape(req_data.get('itemName', 'Item'))}\n"
-                    f"📌 <b>Status:</b> <b>{new_status.upper()}</b>\n"
-                    f"💬 <b>Admin Note:</b> {html.escape(req_data.get('adminReply', ''))}"
-                )
-                await context.bot.send_message(chat_id=req_data["telegramUserId"], text=alert_text, parse_mode=constants.ParseMode.HTML)
-            except Exception:
-                pass
-        # Refresh requests view
-        await handle_admin_callbacks(update, context)
-
-    elif data == "adm:reports":
-        reports_raw = await FirebaseRTDB.get("reports") or {}
-        pending = [(rid, r) for rid, r in reports_raw.items() if isinstance(r, dict) and r.get("status") == "pending"]
-        if not pending:
-            await query.edit_message_text(
-                "✅ <b>No pending reports!</b> All reported issues are resolved.",
-                parse_mode=constants.ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="adm:home")]]),
-            )
-            return
-
-        rid, r = pending[0]
-        text = (
-            f"🚨 <b>Pending Bug/Link Report (1 of {len(pending)})</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📦 <b>Material:</b> {html.escape(r.get('productTitle', 'Item'))}\n"
-            f"📌 <b>Reason:</b> {html.escape(r.get('reason', 'Issue'))}\n"
-            f"📝 <b>Details:</b> {html.escape(r.get('issue', ''))}\n"
-            f"👤 <b>Reported By:</b> {html.escape(r.get('userName', 'User'))}\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
+        await update.effective_message.reply_text(
+            text,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")]])
         )
-        keyboard = [
-            [InlineKeyboardButton("✅ Mark as Resolved", callback_data=f"adm_act_rep:{rid}:resolved")],
-            [InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="adm:home")],
-        ]
-        await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif data.startswith("adm_act_rep:"):
-        _, rid, new_status = data.split(":")
-        await FirebaseRTDB.patch(f"reports/{rid}", {
-            "status": new_status,
-            "adminReply": "Issue resolved. Link/file updated.",
-            "updatedAt": int(time.time() * 1000),
-        })
-        await query.answer("Report marked as resolved!", show_alert=True)
-        # Notify user
-        rep_data = await FirebaseRTDB.get(f"reports/{rid}")
-        if rep_data and rep_data.get("telegramUserId"):
-            try:
-                alert_text = (
-                    f"✅ <b>Your UNICORN GOODS Report has been Resolved!</b>\n\n"
-                    f"📦 <b>Material:</b> {html.escape(rep_data.get('productTitle', 'Item'))}\n"
-                    f"💬 <b>Resolution Note:</b> {html.escape(rep_data.get('adminReply', 'Issue resolved.'))}"
-                )
-                await context.bot.send_message(chat_id=rep_data["telegramUserId"], text=alert_text, parse_mode=constants.ParseMode.HTML)
-            except Exception:
-                pass
-        await handle_admin_callbacks(update, context)
+async def activity_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    is_member = await check_channel_membership(user.id, context.bot)
+    if not is_member:
+        await send_fsub_prompt(update, context)
+        return
+    await show_user_activity(update.effective_message, user.id)
 
-    elif data == "adm:maint_toggle":
-        maint = await FirebaseRTDB.get("settings/maintenance") or {}
-        curr = maint.get("enabled", False)
-        new_val = not curr
-        await FirebaseRTDB.patch("settings/maintenance", {
-            "enabled": new_val,
-            "title": "Maintenance Mode",
-            "message": "We are currently performing routine upgrades. Please check back shortly!",
-            "updatedAt": int(time.time() * 1000),
-        })
-        await query.answer(f"Maintenance mode set to {'ON' if new_val else 'OFF'}!", show_alert=True)
-        await show_admin_dashboard(query.message, user.id)
+async def saved_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    is_member = await check_channel_membership(user.id, context.bot)
+    if not is_member:
+        await send_fsub_prompt(update, context)
+        return
+    await show_saved_goods(update.effective_message, user.id)
 
-    elif data == "adm:home":
-        await show_admin_dashboard(query.message, user.id)
+async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    is_member = await check_channel_membership(user.id, context.bot)
+    if not is_member:
+        await send_fsub_prompt(update, context)
+        return
+    await show_about_info(update.effective_message)
+
+async def announcement_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    is_member = await check_channel_membership(user.id, context.bot)
+    if not is_member:
+        await send_fsub_prompt(update, context)
+        return
+    await show_announcements(update.effective_message)
 
 # -----------------------------------------------------------------------------
-# 13. GLOBAL CALLBACK QUERY DISPATCHER
+# 12. GLOBAL CALLBACK QUERY DISPATCHER
 # -----------------------------------------------------------------------------
 async def callback_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1310,11 +1173,8 @@ async def callback_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         await query.edit_message_text(text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")]]))
 
-    elif data.startswith("adm") or data.startswith("adm_"):
-        await handle_admin_callbacks(update, context)
-
 # -----------------------------------------------------------------------------
-# 14. AUTOMATED LIVE NOTIFICATION BACKGROUND WORKER
+# 13. AUTOMATED LIVE NOTIFICATION BACKGROUND WORKER
 # -----------------------------------------------------------------------------
 async def notification_worker(app) -> None:
     """Runs continuously in the background to deliver real-time Telegram DMs to users when admins reply to requests/reports."""
@@ -1451,9 +1311,13 @@ def main() -> None:
     # Basic Commands
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("menu", start_command))
+    application.add_handler(CommandHandler("search", search_command))
+    application.add_handler(CommandHandler("activity", activity_command))
+    application.add_handler(CommandHandler("saved", saved_command))
+    application.add_handler(CommandHandler("about", about_command))
+    application.add_handler(CommandHandler("announcement", announcement_command))
+    application.add_handler(CommandHandler("announcements", announcement_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("about", lambda u, c: show_about_info(u.callback_query) if u.callback_query else u.effective_message.reply_text("Loading...", reply_markup=get_main_menu_keyboard())))
-    application.add_handler(CommandHandler("admin", admin_command))
 
     # Callback Query Dispatcher
     application.add_handler(CallbackQueryHandler(callback_dispatcher))
@@ -1461,8 +1325,24 @@ def main() -> None:
     # Universal Text Auto-Search Handler (Any text message)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_text_search))
 
-    # Start background notification worker when loop starts
+    # Start background notification worker and register Telegram Bot menu commands
     async def post_init(app):
+        try:
+            await app.bot.set_my_commands([
+                BotCommand("start", "Open main menu & explore materials"),
+                BotCommand("menu", "Browse materials by category"),
+                BotCommand("search", "Search books, notes, APKs & tools"),
+                BotCommand("request", "Request missing study material or app"),
+                BotCommand("report", "Report a broken link or issue"),
+                BotCommand("activity", "Track your requests & admin replies"),
+                BotCommand("saved", "View your bookmarked goods"),
+                BotCommand("about", "About UNICORN GOODS & community"),
+                BotCommand("announcement", "View latest updates & notices"),
+                BotCommand("help", "Bot guide & command instructions"),
+            ])
+            logger.info("Bot commands successfully registered with Telegram API.")
+        except Exception as e:
+            logger.warning(f"Could not auto-register bot commands: {e}")
         asyncio.create_task(notification_worker(app))
 
     application.post_init = post_init
