@@ -1,0 +1,5 @@
+# UNICORN GOODS Telegram Bot Dependencies
+python-telegram-bot>=20.8
+httpx>=0.27.0
+aiohttp>=3.9.0
+python-dotenv>=1.0.0

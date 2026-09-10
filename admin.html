@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#080c14">
+  <base href="/">
+  <title>Admin Portal & Console — UNICORN GOODS</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+  
+  <!-- Global Stylesheet -->
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <!-- ==================== AUTH GUARD LOGIN OVERLAY ==================== -->
+  <div id="adminAuthOverlay" class="auth-overlay-container" style="display: flex;">
+    <div class="auth-card" style="max-width: 440px;">
+      <div class="auth-brand">
+        <div class="auth-icon">
+          <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h2 class="auth-title text-gradient">UNICORN GOODS</h2>
+        <p class="auth-subtitle">Restricted Admin Console • Master Key & Firebase Guard</p>
+      </div>
+
+      <!-- Auth Error Alert Box -->
+      <div id="authErrorAlert" class="auth-alert">
+        <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span id="authErrorMsg">Invalid master pass or credentials.</span>
+      </div>
+
+      <!-- Auth Mode Switch (Master Passkey vs Email/Password) -->
+      <div class="auth-tab-switch" style="margin-bottom: 20px;">
+        <div class="auth-tab-btn active" id="tabMasterPassBtn">🔑 Master Pass</div>
+        <div class="auth-tab-btn" id="tabAdminEmailBtn">✉️ Email Login</div>
+      </div>
+
+      <!-- Master Passkey Form (Default & Quickest) -->
+      <form id="adminMasterPassForm">
+        <div class="form-group">
+          <label class="form-label" for="adminMasterPassInput">Secret Master Passkey *</label>
+          <input type="password" id="adminMasterPassInput" class="form-input" placeholder="Enter Secret Pass (e.g. BABAUNICORN16)" required autocomplete="current-password">
+        </div>
+
+        <div class="form-actions" style="margin-top: 24px; flex-direction: column;">
+          <button type="submit" id="btnMasterPassLogin" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-weight: 700;">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Unlock Admin Console
+          </button>
+          <a href="index.html" class="btn-secondary" style="width: 100%; justify-content: center; margin-top: 8px;">
+            ← Return to Public Store
+          </a>
+        </div>
+      </form>
+
+      <!-- Standard Email/Password Form -->
+      <form id="adminLoginForm" style="display: none;">
+        <div class="form-group">
+          <label class="form-label" for="adminEmailInput">Admin Email Address</label>
+          <input type="email" id="adminEmailInput" class="form-input" placeholder="admin@unicorngoods.com" autocomplete="email">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="adminPasswordInput">Password</label>
+          <input type="password" id="adminPasswordInput" class="form-input" placeholder="••••••••••••" autocomplete="current-password">
+        </div>
+
+        <div class="form-actions" style="margin-top: 24px; flex-direction: column;">
+          <button type="submit" id="btnAdminLogin" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            Authenticate & Enter
+          </button>
+          <a href="index.html" class="btn-secondary" id="backToStoreLink" style="width: 100%; justify-content: center; margin-top: 8px;">
+            ← Return to Public Store
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== ADMIN DASHBOARD LAYOUT (STRICTLY HIDDEN UNTIL AUTHENTICATED) ==================== -->
+  <div id="adminDashboardLayout" class="admin-layout hidden" style="display: none !important;">
+    
+    <!-- Mobile Sidebar Backdrop Overlay -->
+    <div id="adminSidebarOverlay" class="admin-sidebar-overlay"></div>
+
+    <!-- Admin Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <div class="admin-sidebar-brand">
+        <div class="brand-icon" style="width: 36px; height: 36px;">
+          <svg class="svg-icon icon-md" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title" style="font-size: 1.1rem;">UNICORN</span>
+          <span class="brand-tagline">Admin Console</span>
+        </div>
+        <button type="button" id="btnCloseMobileSidebar" class="icon-btn" style="margin-left: auto; width: 32px; height: 32px;" title="Close menu">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <nav class="admin-nav" id="adminSidebarNav">
+        <button class="admin-nav-item active" data-tab="overviewTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          <span>Overview</span>
+        </button>
+        <button class="admin-nav-item" data-tab="productsTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span>Products</span>
+          <span class="admin-nav-badge" id="badgeProductCount">0</span>
+        </button>
+        <button class="admin-nav-item" data-tab="bannersTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>Banners</span>
+          <span class="admin-nav-badge" id="badgeBannerCount">0</span>
+        </button>
+        <button class="admin-nav-item" data-tab="brandingTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
+          <span>Logo & Branding</span>
+        </button>
+        <button class="admin-nav-item" data-tab="aboutTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>About Section</span>
+        </button>
+        <button class="admin-nav-item" data-tab="popupTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+          <span>Start Popup</span>
+        </button>
+        <button class="admin-nav-item" data-tab="maintenanceTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          <span>Maintenance</span>
+        </button>
+        <button class="admin-nav-item" data-tab="requestsTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          <span>Requests</span>
+          <span class="admin-nav-badge" id="badgeRequestCount" style="background: var(--color-warning); color: #000;">0</span>
+        </button>
+        <button class="admin-nav-item" data-tab="reportsTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          <span>Reports</span>
+          <span class="admin-nav-badge" id="badgeReportCount" style="background: var(--color-danger); color: #fff;">0</span>
+        </button>
+        <button class="admin-nav-item" data-tab="broadcastTab">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span>Broadcast</span>
+        </button>
+      </nav>
+
+      <div class="admin-sidebar-footer">
+        <button id="btnLogout" class="admin-nav-item" style="color: var(--color-danger); width: 100%; border: none; background: none; text-align: left;">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Logout</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Admin Main View -->
+    <div class="admin-main">
+      
+      <!-- Topbar -->
+      <header class="admin-topbar">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <!-- Mobile Hamburger Toggle -->
+          <button type="button" id="btnMobileMenuToggle" class="mobile-menu-btn" aria-label="Toggle navigation drawer">
+            <svg class="svg-icon icon-md" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          
+          <h1 class="admin-page-title" id="adminHeaderTitle">Dashboard Overview</h1>
+          <span id="syncStatusBadge" class="status-badge status-published" style="font-size: 0.7rem;">
+            <svg class="svg-icon icon-xs" style="color: var(--color-success);" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+            Live Connected
+          </span>
+        </div>
+
+        <div class="admin-topbar-actions">
+          <!-- Active Admin User Pill -->
+          <div class="admin-user-pill">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span id="adminUserEmail">admin@authenticated</span>
+          </div>
+
+          <button id="adminThemeToggleBtn" class="icon-btn" title="Toggle Dark/Light Mode">
+            <svg class="svg-icon icon-md" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+
+          <button id="btnTopLogout" class="btn-secondary" style="padding: 8px 14px; font-size: 0.8rem; color: var(--color-danger);" title="Logout">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <!-- Content Container -->
+      <main class="admin-content">
+
+        <!-- ==================== TAB 1: OVERVIEW ==================== -->
+        <section id="overviewTab" class="admin-tab-pane active">
+          
+          <!-- Metric Stat Cards -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon-wrapper stat-icon-purple">
+                <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              </div>
+              <div class="stat-details">
+                <span class="stat-number" id="statTotalProducts">0</span>
+                <span class="stat-title">Total Products</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon-wrapper stat-icon-green">
+                <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+              <div class="stat-details">
+                <span class="stat-number" id="statPublishedCount">0</span>
+                <span class="stat-title">Published Items</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon-wrapper stat-icon-amber">
+                <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+              </div>
+              <div class="stat-details">
+                <span class="stat-number" id="statPendingRequests">0</span>
+                <span class="stat-title">Pending Requests</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon-wrapper stat-icon-rose">
+                <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+              </div>
+              <div class="stat-details">
+                <span class="stat-number" id="statPendingReports">0</span>
+                <span class="stat-title">Open Reports</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Action Banner -->
+          <div class="hero-banner" style="padding: 28px 32px; margin-bottom: 32px;">
+            <div class="hero-content">
+              <div class="hero-badge">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Control Center
+              </div>
+              <h2 style="font-size: 1.5rem; font-weight: 800; margin-bottom: 8px;">Serverless Digital Platform Management</h2>
+              <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 16px;">
+                Manage items, create promotional banners for users, configure starting announcement popups, or toggle maintenance mode.
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button id="quickAddProductBtn" class="btn-primary">
+                  <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add Product
+                </button>
+                <button id="quickAddBannerBtn" class="btn-secondary">
+                  <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/></svg>
+                  Add Banner
+                </button>
+                <button id="quickPopupBtn" class="btn-secondary">
+                  <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                  Configure Popup
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Products Preview Table -->
+          <div class="data-card">
+            <div class="data-card-header">
+              <h3 class="data-card-title">Recent Products</h3>
+              <button class="btn-secondary" style="font-size: 0.8rem;" data-tab-link="productsTab">View All Products →</button>
+            </div>
+            <div class="table-responsive">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="overviewProductsTbody">
+                  <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Loading products...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 2: PRODUCTS MANAGEMENT ==================== -->
+        <section id="productsTab" class="admin-tab-pane">
+          
+          <div class="data-card">
+            <div class="data-card-header">
+              <div>
+                <h2 class="data-card-title">All Products & Digital Goods</h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Manage, edit, publish or draft your items</p>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <input type="text" id="adminProductSearch" class="form-input" placeholder="Search catalog..." style="width: 220px; padding: 8px 12px; font-size: 0.85rem;">
+                <button id="openAddProductModalBtn" class="btn-primary">
+                  <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add Product
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Image</th>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Download URL</th>
+                    <th>Status</th>
+                    <th>Created Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="productsTableBody">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading products...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 3: BANNERS MANAGEMENT ==================== -->
+        <section id="bannersTab" class="admin-tab-pane">
+          
+          <div class="data-card">
+            <div class="data-card-header">
+              <div>
+                <h2 class="data-card-title">User Panel Promo Banners</h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Add dynamic banners shown in the hero section on user devices</p>
+              </div>
+              <button id="openAddBannerModalBtn" class="btn-primary">
+                <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Create Banner
+              </button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Image</th>
+                    <th>Badge</th>
+                    <th>Banner Title</th>
+                    <th>Subtitle</th>
+                    <th>Button Link</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="bannersTableBody">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No custom banners created yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 4: BRANDING & LOGO MANAGEMENT ==================== -->
+        <section id="brandingTab" class="admin-tab-pane">
+          
+          <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px;">
+            <!-- Branding Form Card -->
+            <div class="data-card">
+              <div class="data-card-header">
+                <div>
+                  <h2 class="data-card-title">Site Branding & Logo</h2>
+                  <p style="font-size: 0.8rem; color: var(--text-secondary);">Customize your app logo, brand title, and tagline in real-time</p>
+                </div>
+              </div>
+
+              <div style="padding: 24px;">
+                <form id="brandingSettingsForm">
+                  
+                  <!-- Logo Upload with ImgBB -->
+                  <div class="form-group">
+                    <label class="form-label">Brand App Logo (ImgBB Auto-Upload)</label>
+                    
+                    <div class="upload-zone" id="logoUploadZone">
+                      <input type="file" id="logoFileInput" accept="image/*" style="display: none;">
+                      <div class="upload-zone-icon">
+                        <svg class="svg-icon icon-xl" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
+                      </div>
+                      <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px;">
+                        Click to upload new logo image
+                      </div>
+                      <div style="font-size: 0.75rem; color: var(--text-muted);">
+                        PNG, SVG, JPG, WebP (Square ratio recommended)
+                      </div>
+                    </div>
+
+                    <!-- Upload Progress Bar -->
+                    <div class="upload-progress-bar" id="logoProgressBar">
+                      <div class="upload-progress-fill" id="logoProgressFill"></div>
+                    </div>
+
+                    <!-- Direct Logo URL & Preview -->
+                    <div class="upload-preview-container" id="logoPreviewWrapper" style="display: none; margin-top: 12px;">
+                      <img id="brandLogoPreviewThumb" src="" alt="Logo Thumb" class="upload-preview-thumb" style="border-radius: var(--radius-sm);">
+                      <div style="flex: 1; min-width: 0;">
+                        <input type="url" id="brandLogoUrlInput" class="form-input" placeholder="https://i.ibb.co/... (Direct image link)" style="font-size: 0.8rem; padding: 6px 10px;">
+                      </div>
+                      <button type="button" id="btnRemoveBrandLogo" class="btn-secondary" style="padding: 6px 10px; font-size: 0.75rem; color: var(--color-danger);">
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Brand Title -->
+                  <div class="form-group">
+                    <label class="form-label" for="brandTitleInput">Brand Name / Title *</label>
+                    <input type="text" id="brandTitleInput" class="form-input" placeholder="UNICORN GOODS" required>
+                  </div>
+
+                  <!-- Brand Tagline -->
+                  <div class="form-group">
+                    <label class="form-label" for="brandTaglineInput">Tagline / Subtitle</label>
+                    <input type="text" id="brandTaglineInput" class="form-input" placeholder="Digital Store">
+                  </div>
+
+                  <div class="form-actions" style="justify-content: flex-start; margin-top: 20px;">
+                    <button type="submit" id="btnSaveBranding" class="btn-primary">
+                      <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+                      Update Brand Settings
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- Live Preview Card -->
+            <div class="data-card">
+              <div class="data-card-header">
+                <h3 class="data-card-title">Live Storefront Preview</h3>
+              </div>
+              <div style="padding: 24px;">
+                <div style="padding: 16px; background: var(--bg-app); border: 1px solid var(--border-glass); border-radius: var(--radius-lg); margin-bottom: 16px;">
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">Navbar Brand Preview</div>
+                  <div class="brand-logo" style="pointer-events: none;">
+                    <div class="brand-icon" id="previewBrandIconBox" style="width: 44px; height: 44px;">
+                      <img id="previewLogoImg" src="" alt="Logo" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm);">
+                      <svg class="svg-icon icon-lg" id="previewDefaultIcon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                      </svg>
+                    </div>
+                    <div class="brand-text">
+                      <span class="brand-title text-gradient" id="previewBrandTitle">UNICORN GOODS</span>
+                      <span class="brand-tagline" id="previewBrandTagline">Digital Store</span>
+                    </div>
+                  </div>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+                  Changes made here update immediately across all connected user devices in real-time without requiring a page reload.
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 5: ABOUT SECTION & COMMUNITY SETTINGS ==================== -->
+        <section id="aboutTab" class="admin-tab-pane">
+          
+          <div class="data-card" style="max-width: 760px;">
+            <div class="data-card-header">
+              <div>
+                <h2 class="data-card-title">Profile About Section & Community</h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Customize the About section shown inside the User Profile modal in real-time</p>
+              </div>
+            </div>
+
+            <div style="padding: 24px;">
+              <form id="aboutSettingsForm">
+                
+                <!-- About Title -->
+                <div class="form-group">
+                  <label class="form-label" for="aboutTitleInput">About Title *</label>
+                  <input type="text" id="aboutTitleInput" class="form-input" placeholder="About UNICORN GOODS" required>
+                </div>
+
+                <!-- About Tagline -->
+                <div class="form-group">
+                  <label class="form-label" for="aboutTaglineInput">Subtitle / Tagline</label>
+                  <input type="text" id="aboutTaglineInput" class="form-input" placeholder="Curated Free Digital Library & Study Hub">
+                </div>
+
+                <!-- About Content Story / Guidelines -->
+                <div class="form-group">
+                  <label class="form-label" for="aboutContentInput">About Content / Story / Mission *</label>
+                  <textarea id="aboutContentInput" class="form-textarea" placeholder="Describe the mission, download features, and community guidelines..." style="min-height: 120px;" required></textarea>
+                </div>
+
+                <!-- Version Info -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                  <div class="form-group">
+                    <label class="form-label" for="aboutVersionInput">App Version Tag</label>
+                    <input type="text" id="aboutVersionInput" class="form-input" placeholder="v2.4.0">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="aboutContactTextInput">Button Text (Optional)</label>
+                    <input type="text" id="aboutContactTextInput" class="form-input" placeholder="e.g. Join Telegram Channel ↗">
+                  </div>
+                </div>
+
+                <!-- Community / Social Support Link -->
+                <div class="form-group">
+                  <label class="form-label" for="aboutContactLinkInput">Community / Support URL</label>
+                  <input type="url" id="aboutContactLinkInput" class="form-input" placeholder="https://t.me/yourgroup or https://discord.gg/...">
+                </div>
+
+                <div class="form-actions" style="justify-content: flex-start; margin-top: 20px;">
+                  <button type="submit" id="btnSaveAbout" class="btn-primary">
+                    <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+                    Save About Settings
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 6: STARTING POPUP MANAGER ==================== -->
+        <section id="popupTab" class="admin-tab-pane">
+          
+          <div class="data-card" style="max-width: 720px;">
+            <div class="data-card-header">
+              <div>
+                <h2 class="data-card-title">Starting Announcement Popup</h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Show a welcome popup modal when users first open the app</p>
+              </div>
+            </div>
+
+            <div style="padding: 24px;">
+              <form id="popupSettingsForm">
+                
+                <!-- Toggle Active -->
+                <div class="form-group" style="margin-bottom: 24px; padding: 14px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+                  <label class="toggle-switch-label">
+                    <input type="checkbox" id="togglePopupActive" class="toggle-switch-checkbox">
+                    <span class="toggle-switch-slider"></span>
+                    <div>
+                      <strong style="display: block; font-size: 0.95rem;">Enable Starting Popup Modal</strong>
+                      <span style="font-size: 0.78rem; color: var(--text-secondary);">When active, users will see this popup on visit</span>
+                    </div>
+                  </label>
+                </div>
+
+                <!-- Popup Title -->
+                <div class="form-group">
+                  <label class="form-label" for="popupTitleInput">Popup Title *</label>
+                  <input type="text" id="popupTitleInput" class="form-input" placeholder="e.g. Welcome to UNICORN GOODS!" required>
+                </div>
+
+                <!-- Popup Message -->
+                <div class="form-group">
+                  <label class="form-label" for="popupMsgInput">Popup Message / Details *</label>
+                  <textarea id="popupMsgInput" class="form-textarea" placeholder="Enter announcement text or update notes..." style="min-height: 100px;" required></textarea>
+                </div>
+
+                <!-- Popup Image Upload Zone (ImgBB) -->
+                <div class="form-group">
+                  <label class="form-label">Popup Banner Image (Optional)</label>
+                  
+                  <div class="upload-zone" id="popupImgUploadZone">
+                    <input type="file" id="popupFileInput" accept="image/*" style="display: none;">
+                    <div class="upload-zone-icon">
+                      <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    </div>
+                    <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px;">
+                      Click to browse or drag & drop popup image
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted);">
+                      PNG, JPG, WebP (Uploaded automatically via ImgBB)
+                    </div>
+                  </div>
+
+                  <!-- Upload Progress Bar -->
+                  <div class="upload-progress-bar" id="popupProgressBar" style="display: none;">
+                    <div class="upload-progress-fill" id="popupProgressFill" style="width: 0%;"></div>
+                  </div>
+
+                  <!-- Preview Wrapper -->
+                  <div class="upload-preview-container" id="popupPreviewWrapper" style="display: none;">
+                    <img id="popupPreviewThumb" src="" alt="Popup Preview" class="upload-preview-thumb" style="max-height: 70px; width: auto; object-fit: contain;">
+                    <div style="flex: 1; min-width: 0;">
+                      <span style="font-size: 0.78rem; font-weight: 600; color: var(--color-success);">Image ready</span>
+                      <input type="url" id="popupImgInput" class="form-input" placeholder="https://i.ibb.co/... (Direct image link)" style="margin-top: 4px; font-size: 0.78rem; padding: 6px 10px;">
+                    </div>
+                    <button type="button" id="btnRemovePopupImg" class="btn-secondary" style="padding: 6px 10px; font-size: 0.75rem; color: var(--color-danger);">
+                      Remove
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Action Button -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                  <div class="form-group">
+                    <label class="form-label" for="popupLinkTextInput">Button Text (Optional)</label>
+                    <input type="text" id="popupLinkTextInput" class="form-input" placeholder="e.g. View Latest Notes">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="popupLinkUrlInput">Button Link / URL (Optional)</label>
+                    <input type="text" id="popupLinkUrlInput" class="form-input" placeholder="#/notes or https://...">
+                  </div>
+                </div>
+
+                <div class="form-actions" style="justify-content: flex-start; margin-top: 20px;">
+                  <button type="submit" id="btnSavePopupSettings" class="btn-primary">
+                    <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+                    Save Popup Settings
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 5: MAINTENANCE MODE ==================== -->
+        <section id="maintenanceTab" class="admin-tab-pane">
+          
+          <div class="data-card" style="max-width: 720px;">
+            <div class="data-card-header">
+              <div>
+                <h2 class="data-card-title">Maintenance Mode Control</h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Block storefront visits with a custom maintenance message</p>
+              </div>
+            </div>
+
+            <div style="padding: 24px;">
+              <form id="maintenanceForm">
+                
+                <!-- Toggle Maintenance -->
+                <div class="form-group" style="margin-bottom: 24px; padding: 14px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+                  <label class="toggle-switch-label">
+                    <input type="checkbox" id="toggleMaintenanceActive" class="toggle-switch-checkbox">
+                    <span class="toggle-switch-slider"></span>
+                    <div>
+                      <strong style="display: block; font-size: 0.95rem;">Enable Maintenance Mode</strong>
+                      <span style="font-size: 0.78rem; color: var(--text-secondary);">When active, user panel displays full maintenance screen</span>
+                    </div>
+                  </label>
+                </div>
+
+                <!-- Custom Title -->
+                <div class="form-group">
+                  <label class="form-label" for="maintTitleInput">Maintenance Title</label>
+                  <input type="text" id="maintTitleInput" class="form-input" placeholder="e.g. Scheduled System Upgrade" required>
+                </div>
+
+                <!-- Custom Message -->
+                <div class="form-group">
+                  <label class="form-label" for="maintMessageInput">Custom Maintenance Message / Text</label>
+                  <textarea id="maintMessageInput" class="form-textarea" placeholder="e.g. We are performing server upgrades. All downloads will resume shortly!" style="min-height: 110px;" required></textarea>
+                </div>
+
+                <div class="form-actions" style="justify-content: flex-start; margin-top: 20px;">
+                  <button type="submit" id="btnSaveMaintenance" class="btn-primary">
+                    <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+                    Update Maintenance State
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 6: USER REQUESTS ==================== -->
+        <section id="requestsTab" class="admin-tab-pane">
+          
+          <div class="data-card">
+            <div class="data-card-header">
+              <div>
+                <h2 class="data-card-title">User Item Requests</h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Materials requested by the community (/requests)</p>
+              </div>
+              <span id="requestsCountBadge" class="status-badge status-draft">0 Requests</span>
+            </div>
+
+            <div class="table-responsive">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Requester</th>
+                    <th>Requested Item</th>
+                    <th>Category</th>
+                    <th>Details / Notes</th>
+                    <th>Status</th>
+                    <th>Requested At</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="requestsTableBody">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading requests...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 7: REPORTS ==================== -->
+        <section id="reportsTab" class="admin-tab-pane">
+          
+          <div class="data-card">
+            <div class="data-card-header">
+              <div>
+                <h2 class="data-card-title">Community Issue Reports</h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Reported dead links or corrupted files (/reports)</p>
+              </div>
+              <span id="reportsCountBadge" class="status-badge status-draft" style="background: var(--color-danger-bg); color: var(--color-danger);">0 Reports</span>
+            </div>
+
+            <div class="table-responsive">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Product Title</th>
+                    <th>Issue Reason</th>
+                    <th>Details</th>
+                    <th>Status</th>
+                    <th>Reported At</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="reportsTableBody">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading reports...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ==================== TAB 8: BROADCAST NOTIFICATIONS ==================== -->
+        <section id="broadcastTab" class="admin-tab-pane">
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <!-- Broadcast Composer Form -->
+            <div class="data-card">
+              <div class="data-card-header">
+                <h2 class="data-card-title">Broadcast Notification</h2>
+              </div>
+              <div style="padding: 24px;">
+                <form id="broadcastForm">
+                  <div class="form-group">
+                    <label class="form-label" for="broadcastMsgInput">Announcement Message</label>
+                    <textarea id="broadcastMsgInput" class="form-textarea" placeholder="e.g. New Engineering Mathematics Semester 3 Question Bank uploaded!" required style="min-height: 120px;"></textarea>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="broadcastTypeInput">Notification Type</label>
+                    <select id="broadcastTypeInput" class="form-select">
+                      <option value="info">General Info / Update</option>
+                      <option value="update">New Item Uploaded</option>
+                      <option value="alert">Important Alert / Notice</option>
+                    </select>
+                  </div>
+
+                  <div class="form-actions" style="justify-content: flex-start;">
+                    <button type="submit" id="btnSendBroadcast" class="btn-primary">
+                      <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                      Push Broadcast to All Users
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- Broadcast History -->
+            <div class="data-card">
+              <div class="data-card-header">
+                <h2 class="data-card-title">Broadcast History</h2>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Message</th>
+                      <th>Sent At</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="broadcastTableBody">
+                    <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No broadcasts sent yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ==================== ADD / EDIT PRODUCT MODAL ==================== -->
+  <div id="productModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="modal-title" id="productModalTitle">Add New Product</h3>
+          <p class="modal-subtitle">Fill in details and upload preview image via ImgBB</p>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="productModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <form id="productForm">
+        <input type="hidden" id="editProductId">
+
+        <!-- Title -->
+        <div class="form-group">
+          <label class="form-label" for="prodTitle">Product / Material Title *</label>
+          <input type="text" id="prodTitle" class="form-input" placeholder="e.g. Operating Systems Complete Lecture Notes PDF" required>
+        </div>
+
+        <!-- Category & Status -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label" for="prodCategory">Category *</label>
+            <select id="prodCategory" class="form-select" required>
+              <option value="Study Material">Study Material</option>
+              <option value="Notes">Notes & PDFs</option>
+              <option value="APK">APK / Android</option>
+              <option value="Software">Software / Windows / Mac</option>
+              <option value="Tools">Tools & Utilities</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="prodStatus">Publication Status *</label>
+            <select id="prodStatus" class="form-select" required>
+              <option value="published">Published (Live on Store)</option>
+              <option value="draft">Draft (Hidden from Users)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- File Download URL -->
+        <div class="form-group">
+          <label class="form-label" for="prodFileUrl">Download URL (Direct Link / Drive / Cloud) *</label>
+          <input type="url" id="prodFileUrl" class="form-input" placeholder="https://drive.google.com/... or https://domain.com/file.apk" required>
+        </div>
+
+        <!-- ImgBB Image Upload Zone -->
+        <div class="form-group">
+          <label class="form-label">Preview Image / App Icon (ImgBB API)</label>
+          
+          <div class="upload-zone" id="imgUploadZone">
+            <input type="file" id="imgFileInput" accept="image/*" style="display: none;">
+            <div class="upload-zone-icon">
+              <svg class="svg-icon icon-xl" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </div>
+            <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px;">
+              Click to browse or drag & drop image here
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">
+              PNG, JPG, WebP, GIF up to 10MB (Uploaded automatically to ImgBB)
+            </div>
+          </div>
+
+          <!-- Upload Progress Bar -->
+          <div class="upload-progress-bar" id="uploadProgressBar">
+            <div class="upload-progress-fill" id="uploadProgressFill"></div>
+          </div>
+
+          <!-- Preview & Direct URL Input -->
+          <div class="upload-preview-container" id="uploadPreviewWrapper" style="display: none;">
+            <img id="imgPreviewThumb" src="" alt="Thumbnail" class="upload-preview-thumb">
+            <div style="flex: 1; min-width: 0;">
+              <span id="imgUploadStatusText" style="font-size: 0.8rem; font-weight: 600; color: var(--color-success); display: flex; align-items: center; gap: 4px;">
+                <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Image ready
+              </span>
+              <input type="url" id="prodImgUrl" class="form-input" placeholder="https://i.ibb.co/... (Direct image link)" style="margin-top: 4px; font-size: 0.8rem; padding: 6px 10px;">
+            </div>
+            <button type="button" id="removeImgBtn" class="btn-secondary" style="padding: 6px 10px; font-size: 0.75rem; color: var(--color-danger);">
+              Change
+            </button>
+          </div>
+          
+          <div style="margin-top: 6px; font-size: 0.78rem; text-align: right;">
+            <a href="javascript:void(0)" id="manualImgUrlToggle" style="color: var(--accent-primary); text-decoration: underline;">
+              Or paste direct image URL instead
+            </a>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="form-group">
+          <label class="form-label" for="prodDesc">Description & Highlights</label>
+          <textarea id="prodDesc" class="form-textarea" placeholder="Describe topics covered, version number, author, etc..."></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" data-close-modal="productModal">Cancel</button>
+          <button type="submit" id="btnSaveProduct" class="btn-primary">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Product
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== ADD / EDIT BANNER MODAL ==================== -->
+  <div id="bannerModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 580px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="modal-title" id="bannerModalTitle">Add Promo Banner</h3>
+          <p class="modal-subtitle">Display a promo banner in the user panel hero area</p>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="bannerModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <form id="bannerForm">
+        <input type="hidden" id="editBannerId">
+
+        <div class="form-group">
+          <label class="form-label" for="bannerBadge">Badge Tag</label>
+          <input type="text" id="bannerBadge" class="form-input" placeholder="e.g. SPECIAL UPDATE / EXCLUSIVE">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="bannerTitle">Banner Title *</label>
+          <input type="text" id="bannerTitle" class="form-input" placeholder="e.g. Full Semester 4 Exam Study Bundle" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="bannerSubtitle">Subtitle / Description</label>
+          <textarea id="bannerSubtitle" class="form-textarea" placeholder="Short description of this promo..."></textarea>
+        </div>
+
+        <!-- Banner Image Upload Zone (ImgBB) -->
+        <div class="form-group">
+          <label class="form-label">Banner Promo Image (ImgBB API)</label>
+          
+          <div class="upload-zone" id="bannerImgUploadZone">
+            <input type="file" id="bannerFileInput" accept="image/*" style="display: none;">
+            <div class="upload-zone-icon">
+              <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </div>
+            <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px;">
+              Click to browse or drag & drop banner image
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted);">
+              PNG, JPG, WebP, GIF (Uploaded automatically via ImgBB)
+            </div>
+          </div>
+
+          <!-- Upload Progress Bar -->
+          <div class="upload-progress-bar" id="bannerProgressBar" style="display: none;">
+            <div class="upload-progress-fill" id="bannerProgressFill" style="width: 0%;"></div>
+          </div>
+
+          <!-- Preview Wrapper -->
+          <div class="upload-preview-container" id="bannerPreviewWrapper" style="display: none;">
+            <img id="bannerPreviewThumb" src="" alt="Banner Preview" class="upload-preview-thumb" style="max-height: 70px; width: auto; object-fit: contain;">
+            <div style="flex: 1; min-width: 0;">
+              <span style="font-size: 0.78rem; font-weight: 600; color: var(--color-success);">Image ready</span>
+              <input type="url" id="bannerImgUrl" class="form-input" placeholder="https://i.ibb.co/... (Direct image link)" style="margin-top: 4px; font-size: 0.78rem; padding: 6px 10px;">
+            </div>
+            <button type="button" id="btnRemoveBannerImg" class="btn-secondary" style="padding: 6px 10px; font-size: 0.75rem; color: var(--color-danger);">
+              Remove
+            </button>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div class="form-group">
+            <label class="form-label" for="bannerLinkText">Button Text</label>
+            <input type="text" id="bannerLinkText" class="form-input" placeholder="e.g. Download Now">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="bannerLink">Button Link / Route</label>
+            <input type="text" id="bannerLink" class="form-input" placeholder="#/study-material or URL">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" data-close-modal="bannerModal">Cancel</button>
+          <button type="submit" id="btnSaveBanner" class="btn-primary">
+            Save Banner
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== DELETE CONFIRMATION MODAL ==================== -->
+  <div id="deleteConfirmModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 420px; text-align: center;">
+      <div style="display: flex; justify-content: center; margin-bottom: 16px; color: var(--color-danger);">
+        <svg class="svg-icon icon-xl" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+      </div>
+      <h3 class="modal-title" style="margin-bottom: 8px;">Are you sure?</h3>
+      <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 24px;" id="deleteConfirmText">
+        This action cannot be undone.
+      </p>
+      <div class="form-actions" style="justify-content: center;">
+        <button type="button" class="btn-secondary" data-close-modal="deleteConfirmModal">Cancel</button>
+        <button type="button" id="btnConfirmDelete" class="btn-primary" style="background: var(--color-danger);">
+          Delete Permanently
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== ADMIN REPLY & STATUS UPDATE MODAL ==================== -->
+  <div id="adminReplyModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="modal-title" id="adminReplyModalTitle">Review & Reply</h3>
+          <p class="modal-subtitle">Update progress status and send response to user</p>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="adminReplyModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <form id="adminReplyForm">
+        <input type="hidden" id="replyTargetType">
+        <input type="hidden" id="replyTargetId">
+
+        <!-- Submission Summary Info -->
+        <div style="padding: 12px 14px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin-bottom: 18px;">
+          <div style="font-size: 0.75rem; color: var(--text-muted);" id="replyTargetUser">Submitted by User</div>
+          <strong id="replyTargetTitle" style="font-size: 0.95rem; display: block; margin: 4px 0;">Item Name</strong>
+          <p id="replyTargetDetails" style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.4; margin: 0;"></p>
+        </div>
+
+        <!-- Progress Status -->
+        <div class="form-group">
+          <label class="form-label" for="replyStatusSelect">Progress Status *</label>
+          <select id="replyStatusSelect" class="form-select" required>
+            <option value="pending">Pending Review</option>
+            <option value="in_progress">In Progress / Under Review</option>
+            <option value="approved">Approved / Material Uploaded</option>
+            <option value="resolved">Resolved / Issue Fixed</option>
+            <option value="rejected">Rejected / Cannot Fulfill</option>
+          </select>
+        </div>
+
+        <!-- Admin Response Note -->
+        <div class="form-group">
+          <label class="form-label" for="adminReplyMessageInput">Admin Reply / Note (Visible to User)</label>
+          <textarea id="adminReplyMessageInput" class="form-textarea" placeholder="e.g. We have uploaded this PDF to Study Materials! Thanks for requesting." style="min-height: 90px;"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" data-close-modal="adminReplyModal">Cancel</button>
+          <button type="submit" id="btnSaveAdminReply" class="btn-primary">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Save & Send Reply
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Stack -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Admin Logic (ES6 Module) -->
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>

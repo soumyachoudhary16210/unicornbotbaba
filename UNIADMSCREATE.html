@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/">
+  <title>Create Admin Account — UNICORN GOODS</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2'><path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/></svg>">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 20%, rgba(99, 102, 241, 0.25) 0%, var(--bg-app) 75%);">
+
+  <!-- ==================== SECRET ADMIN CREATION CARD ==================== -->
+  <div class="container" style="max-width: 440px; padding: 20px;">
+    <div class="auth-card" style="max-width: 100%;">
+      
+      <!-- Top Brand -->
+      <div class="auth-brand">
+        <div class="auth-icon">
+          <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        </div>
+        <h1 class="auth-title text-gradient">Create Admin Account</h1>
+        <p class="auth-subtitle">Enter admin email and password to create account</p>
+      </div>
+
+      <!-- Alert Boxes -->
+      <div id="createErrorAlert" class="auth-alert">
+        <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span id="createErrorMsg">Error creating admin.</span>
+      </div>
+
+      <div id="createSuccessAlert" class="auth-success-box">
+        <svg class="svg-icon icon-md" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div>
+          <div style="font-weight: 700;">Admin Created Successfully!</div>
+          <div style="font-size: 0.78rem; opacity: 0.9; margin-top: 2px;">Your admin credentials are ready to log into admin.html.</div>
+        </div>
+      </div>
+
+      <!-- Registration Form (Email, Password & Master Passkey) -->
+      <form id="createAdminForm">
+        
+        <!-- Master Passkey Requirement -->
+        <div class="form-group">
+          <label class="form-label" for="masterSecretKey">Master Security Passkey *</label>
+          <input type="password" id="masterSecretKey" class="form-input" placeholder="Enter BABAUNICORN16 to authorize" required autocomplete="current-password">
+        </div>
+
+        <!-- Admin Email -->
+        <div class="form-group">
+          <label class="form-label" for="newAdminEmail">Admin Email *</label>
+          <input type="email" id="newAdminEmail" class="form-input" placeholder="admin@unicorngoods.com" required autocomplete="email">
+        </div>
+
+        <!-- Admin Password -->
+        <div class="form-group">
+          <label class="form-label" for="newAdminPassword">Admin Password (6+ characters) *</label>
+          <input type="password" id="newAdminPassword" class="form-input" placeholder="••••••••••••" required minlength="6" autocomplete="new-password">
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions" style="margin-top: 24px; flex-direction: column;">
+          <button type="submit" id="btnCreateAdmin" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+            Create Authorized Admin Account
+          </button>
+
+          <a href="admin.html" class="btn-secondary" style="width: 100%; justify-content: center; margin-top: 10px;">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Go to Admin Login (admin.html)
+          </a>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Toast Stack -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Script -->
+  <script type="module">
+    import { 
+      auth, 
+      createUserWithEmailAndPassword, 
+      db, 
+      ref, 
+      set 
+    } from "./firebase-config.js";
+
+    const form = document.getElementById('createAdminForm');
+    const masterKeyInput = document.getElementById('masterSecretKey');
+    const emailInput = document.getElementById('newAdminEmail');
+    const passInput = document.getElementById('newAdminPassword');
+    const btnSubmit = document.getElementById('btnCreateAdmin');
+    const errorAlert = document.getElementById('createErrorAlert');
+    const errorMsg = document.getElementById('createErrorMsg');
+    const successAlert = document.getElementById('createSuccessAlert');
+    const toastContainer = document.getElementById('toastContainer');
+
+    function showError(msg) {
+      if (errorMsg) errorMsg.textContent = msg;
+      if (errorAlert) errorAlert.classList.add('visible');
+      if (successAlert) successAlert.classList.remove('visible');
+    }
+
+    function hideError() {
+      if (errorAlert) errorAlert.classList.remove('visible');
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `<span>${escapeHTML(message)}</span>`;
+      toastContainer.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    function escapeHTML(str) {
+      return (str || '').replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideError();
+
+        const masterKey = (masterKeyInput?.value || '').trim();
+        const email = (emailInput?.value || '').trim();
+        const password = passInput?.value || '';
+
+        if (masterKey !== 'BABAUNICORN16') {
+          showError("Invalid Master Security Passkey. Unauthorized creation blocked.");
+          showToast("Master Security Pass incorrect.", "error");
+          return;
+        }
+
+        if (!email || !password) {
+          showError("Please enter email and password.");
+          return;
+        }
+
+        if (password.length < 6) {
+          showError("Password must be at least 6 characters long.");
+          return;
+        }
+
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<span>Creating Admin Account...</span>`;
+
+        try {
+          // Create Admin user in Firebase Authentication
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const user = userCredential.user;
+
+          // Register Admin profile in Realtime DB
+          await set(ref(db, `admins/${user.uid}`), {
+            uid: user.uid,
+            email: email,
+            role: 'admin',
+            createdAt: Date.now()
+          });
+
+          if (successAlert) successAlert.classList.add('visible');
+          showToast("Admin account created successfully!", "success");
+          form.reset();
+
+          btnSubmit.innerHTML = `<span>Admin Created Successfully</span>`;
+          btnSubmit.style.background = "var(--color-success)";
+        } catch (error) {
+          let msg = error.message;
+          if (error.code === 'auth/email-already-in-use') {
+            msg = "This email is already registered. You can log into admin.html.";
+          } else if (error.code === 'auth/invalid-email') {
+            msg = "Please enter a valid email format.";
+          } else if (error.code === 'auth/weak-password') {
+            msg = "Password is too weak. Please use at least 6 characters.";
+          }
+          showError(msg);
+          showToast(msg, "error");
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = `<span>Create Admin Account</span>`;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

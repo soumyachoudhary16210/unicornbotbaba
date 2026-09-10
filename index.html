@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/">
+  <title>UNICORN GOODS — Study Materials, Notes & Digital Software</title>
+  
+  <!-- Dynamic SEO & Open Graph Meta Tags -->
+  <meta name="description" id="metaDescription" content="Download verified study materials, lecture notes, APKs, and digital software directly from UNICORN GOODS.">
+  <meta property="og:title" id="ogTitle" content="UNICORN GOODS — Premium Digital Library">
+  <meta property="og:description" id="ogDescription" content="Download verified study materials, lecture notes, APKs, and digital software.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" id="ogImage" content="https://i.ibb.co/vzR0hDq/unicorn-banner.png">
+  
+  <!-- Favicon -->
+  <link rel="icon" id="appFavicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <!-- ==================== CINEMATIC SPLASH / LAUNCH ANIMATION ==================== -->
+  <div id="splashScreen" class="splash-screen">
+    <div class="splash-content">
+      <div class="splash-logo-glow">
+        <div class="splash-icon-wrapper">
+          <svg class="splash-unicorn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+      </div>
+      <h1 class="splash-title text-gradient">UNICORN GOODS</h1>
+      <p class="splash-subtitle">Premium Digital Downloads & Study Hub</p>
+      <div class="splash-loader-bar">
+        <div class="splash-loader-progress"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== FULLSCREEN MAINTENANCE OVERLAY ==================== -->
+  <div id="maintenanceOverlay" class="maintenance-screen" style="display: none;">
+    <div class="maintenance-card">
+      <div class="maintenance-icon">
+        <svg class="svg-icon icon-xl" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      </div>
+      <h2 class="maintenance-title text-gradient" id="maintenanceTitle">Under Maintenance</h2>
+      <p class="maintenance-desc" id="maintenanceMessage">
+        We are currently upgrading UNICORN GOODS servers to provide a better experience. We will be back online shortly!
+      </p>
+      <div style="font-size: 0.8rem; color: var(--text-muted);">
+        Status: Maintenance Active • Check back in a few minutes
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TOP NAVIGATION ==================== -->
+  <header class="navbar">
+    <div class="container navbar-inner">
+      <!-- Brand Logo & Title -->
+      <a href="#/home" data-link class="brand-logo" id="brandLink">
+        <div class="brand-icon" id="brandIconContainer">
+          <img id="brandLogoImg" src="" alt="Logo" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm);">
+          <svg class="svg-icon icon-lg" id="defaultBrandIcon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title text-gradient" id="brandTitleText">UNICORN GOODS</span>
+          <span class="brand-tagline" id="brandTaglineText">Digital Store</span>
+        </div>
+      </a>
+
+      <!-- Actions -->
+      <div class="nav-actions">
+        <!-- About UNICORN GOODS Nav Button -->
+        <button id="navAboutBtn" class="icon-btn" title="About & Community" aria-label="About UNICORN GOODS">
+          <svg class="svg-icon icon-md" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </button>
+
+        <!-- Saved Goods Quick Action Button -->
+        <button id="navSavedBtn" class="icon-btn" title="Saved Goods" aria-label="Saved Goods">
+          <svg class="svg-icon icon-md" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          <span id="navSavedBadge" class="badge-counter" style="display: none; background: var(--accent-primary);">0</span>
+        </button>
+
+        <!-- Notification Bell -->
+        <div style="position: relative;">
+          <button id="notifBellBtn" class="icon-btn" title="Notifications" aria-label="Notifications">
+            <svg class="svg-icon icon-md" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span id="notifBadge" class="badge-counter" style="display: none;">0</span>
+          </button>
+
+          <!-- Notification Dropdown Panel -->
+          <div id="notifDropdown" class="notif-dropdown">
+            <div class="notif-header">
+              <span class="notif-title">Notifications</span>
+              <button id="notifClearBtn" class="notif-clear-btn">Mark all read</button>
+            </div>
+            <div id="notifList" class="notif-list">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Unified Profile Button (Opens Account, Theme & Activity Tracker) -->
+        <button id="userBadgeBtn" class="profile-nav-btn" title="Account, Theme & Activity" aria-label="User Profile">
+          <div class="profile-nav-avatar">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <span id="userGreetingText" class="profile-nav-name">Account</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== CATEGORY NAVIGATION BAR ==================== -->
+  <nav class="category-nav-bar">
+    <div class="container">
+      <div class="category-nav-scroll" id="categoryNav">
+        <button class="category-pill active" data-category="all">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          All Goods
+        </button>
+        <button class="category-pill pill-saved" data-category="saved">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          Saved Items (<span id="categorySavedCount">0</span>)
+        </button>
+        <button class="category-pill" data-category="Study Material">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Study Material
+        </button>
+        <button class="category-pill" data-category="Notes">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Notes & PDFs
+        </button>
+        <button class="category-pill" data-category="APK">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          APKs & Mobile
+        </button>
+        <button class="category-pill" data-category="Software">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          Software & Apps
+        </button>
+        <button class="category-pill" data-category="Tools">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          Tools & Utilities
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ==================== MAIN APP VIEW ==================== -->
+  <main class="container" style="flex: 1;">
+    
+    <!-- Hero / Dynamic Promo Banner Container -->
+    <section class="hero-section" id="heroSection">
+      
+      <!-- Custom Promo Banner (injected if added by admin) -->
+      <div id="dynamicPromoBannerWrapper"></div>
+
+      <!-- Default Hero Banner -->
+      <div class="hero-banner" id="defaultHeroBanner">
+        <div class="hero-content">
+          <div class="hero-badge">
+            <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Curated Digital Library
+          </div>
+          <h1 class="hero-title">Discover Premium Study Notes, Books & Software</h1>
+          <p class="hero-subtitle">High-speed serverless downloads with cross-device sync. Completely free and community-driven.</p>
+          <div class="hero-stats">
+            <div class="hero-stat-item">
+              <span class="hero-stat-value" id="statTotalItems">0</span>
+              <span class="hero-stat-label">Available Items</span>
+            </div>
+            <div class="hero-stat-item">
+              <span class="hero-stat-value" id="statActiveDownloads">100%</span>
+              <span class="hero-stat-label">Direct & Free</span>
+            </div>
+            <div class="hero-stat-item">
+              <span class="hero-stat-value" id="statSpeed">Sync</span>
+              <span class="hero-stat-label">Multi-Device</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-time Broadcast Notice -->
+      <div id="broadcastBar" class="broadcast-alert-bar hidden">
+        <div class="broadcast-content">
+          <span class="broadcast-icon">
+            <svg class="svg-icon icon-md" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </span>
+          <span id="broadcastMessage">Welcome to UNICORN GOODS!</span>
+        </div>
+        <button id="broadcastCloseBtn" class="broadcast-close-btn" title="Dismiss">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ==================== ENLARGED PROMINENT SEARCH BAR (ABOVE FILES & ITEMS) ==================== -->
+    <section class="feed-search-section">
+      <div class="search-wrapper search-wrapper-feed">
+        <span class="search-icon">
+          <svg class="svg-icon icon-md" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </span>
+        <input type="text" id="searchInput" class="search-input feed-search-input" placeholder="Search study notes, PDFs, APKs, software, tools..." autocomplete="off">
+        <span class="search-kbd-badge">⌘K / Ctrl+K</span>
+        <button id="searchClearBtn" class="search-clear-btn" title="Clear search">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- Products Feed Header -->
+    <div class="section-header">
+      <div>
+        <h2 class="section-title" id="feedSectionTitle">Featured Downloads</h2>
+        <p class="section-subtitle" id="feedSectionSubtitle">Explore top materials and software</p>
+      </div>
+      <div class="feed-counter" id="feedCountText">Loading items...</div>
+    </div>
+
+    <!-- Products Grid -->
+    <section class="products-grid" id="productsGrid">
+      <div class="skeleton-card">
+        <div class="card-top">
+          <div class="skeleton skeleton-icon"></div>
+          <div class="card-info" style="width: 100%;">
+            <div class="skeleton skeleton-badge"></div>
+            <div class="skeleton skeleton-title"></div>
+            <div class="skeleton skeleton-text"></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <div class="skeleton" style="width: 60px; height: 12px;"></div>
+          <div class="skeleton skeleton-btn"></div>
+        </div>
+      </div>
+      <div class="skeleton-card">
+        <div class="card-top">
+          <div class="skeleton skeleton-icon"></div>
+          <div class="card-info" style="width: 100%;">
+            <div class="skeleton skeleton-badge"></div>
+            <div class="skeleton skeleton-title"></div>
+            <div class="skeleton skeleton-text"></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <div class="skeleton" style="width: 60px; height: 12px;"></div>
+          <div class="skeleton skeleton-btn"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state" style="display: none;">
+      <div class="empty-state-icon">
+        <svg class="svg-icon icon-xl" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+      <h3 class="empty-state-title">No items found</h3>
+      <p class="empty-state-desc">We couldn't find anything matching your search or selected category.</p>
+      <button id="resetSearchBtn" class="btn-secondary">Reset Filters</button>
+    </div>
+
+  </main>
+
+  <!-- ==================== FLOATING ACTION BUTTON (REQUEST) ==================== -->
+  <button id="fabRequestBtn" class="fab-request" title="Request an item">
+    <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span>Request Item</span>
+  </button>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- 1. Comprehensive User Account, Theme & Submission Tracker Modal -->
+  <div id="userAuthModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 540px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="modal-title" id="userAuthModalTitle">User Profile & Activity</h3>
+          <p class="modal-subtitle">Manage preferences, account & track request replies</p>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="userAuthModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Top Mode Switcher: Account/Activity vs About UNICORN GOODS -->
+      <div class="auth-tab-switch" style="margin-bottom: 18px;">
+        <div class="auth-tab-btn active" id="topTabAccountBtn">👤 Account & Activity</div>
+        <div class="auth-tab-btn" id="topTabAboutBtn">ℹ️ About Platform</div>
+      </div>
+
+      <!-- Account & Activity Section (Login/Sign Up or Profile) -->
+      <div id="userAccountSection">
+        <!-- Theme Switcher Card Inside Profile -->
+        <div class="profile-theme-box">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            <span style="font-size: 0.85rem; font-weight: 600;">Theme Mode</span>
+          </div>
+          <div class="theme-switch-pill-group">
+            <button type="button" class="theme-pill-btn" id="btnThemeDark" data-set-theme="dark">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              <span>Dark</span>
+            </button>
+            <button type="button" class="theme-pill-btn" id="btnThemeLight" data-set-theme="light">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+              <span>Light</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Auth Alert Box -->
+        <div id="userAuthErrorAlert" class="auth-alert">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="userAuthErrorMsg">Authentication error</span>
+        </div>
+
+        <!-- Unauthenticated View: Login / Sign Up Tabs -->
+        <div id="userAuthFormsWrapper">
+          <div class="auth-tab-switch">
+            <div class="auth-tab-btn active" id="tabUserLoginBtn">Log In</div>
+            <div class="auth-tab-btn" id="tabUserSignupBtn">Sign Up</div>
+          </div>
+
+          <!-- Login Form -->
+          <form id="userLoginForm">
+            <div class="form-group">
+              <label class="form-label" for="loginEmailInput">Username or Email *</label>
+              <input type="text" id="loginEmailInput" class="form-input" placeholder="e.g. alex_01 or alex@domain.com" required autocomplete="username">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="loginPasswordInput">Password *</label>
+              <input type="password" id="loginPasswordInput" class="form-input" placeholder="••••••••••••" required autocomplete="current-password">
+            </div>
+            <div class="form-actions" style="flex-direction: column;">
+              <button type="submit" id="btnLoginSubmit" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+                <span>Log In to Account</span>
+              </button>
+            </div>
+          </form>
+
+          <!-- Sign Up Form (Instagram Style) -->
+          <form id="userSignupForm" style="display: none;">
+            <div class="form-group">
+              <label class="form-label" for="signupUsernameInput">Username (e.g. @alex_01) *</label>
+              <input type="text" id="signupUsernameInput" class="form-input" placeholder="alex_01" required autocomplete="username">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="signupEmailInput">Email Address *</label>
+              <input type="email" id="signupEmailInput" class="form-input" placeholder="alex@gmail.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="signupPasswordInput">Password (6+ chars) *</label>
+              <input type="password" id="signupPasswordInput" class="form-input" placeholder="••••••••••••" required minlength="6" autocomplete="new-password">
+            </div>
+            <div class="form-actions" style="flex-direction: column;">
+              <button type="submit" id="btnSignupSubmit" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+                <span>Create Account</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Authenticated Profile View & Submissions Tracker (When Logged In) -->
+        <div id="userProfileWrapper" style="display: none;">
+          <!-- User Info Card -->
+          <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px; padding: 14px; background: var(--bg-surface-elevated); border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);">
+            <div class="brand-icon" style="width: 48px; height: 48px; border-radius: 50%;">
+              <svg class="svg-icon icon-lg" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <h4 id="profileUsername" style="font-size: 1.05rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@username</h4>
+              <p id="profileEmail" style="font-size: 0.78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">user@domain.com</p>
+            </div>
+          </div>
+
+          <!-- Quick Shortcuts -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;">
+            <button id="profileViewSavedBtn" class="btn-secondary" style="padding: 9px; justify-content: center; font-size: 0.82rem;">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              <span>Saved Goods (<span id="profileSavedCount">0</span>)</span>
+            </button>
+            <button id="profileRequestBtn" class="btn-secondary" style="padding: 9px; justify-content: center; font-size: 0.82rem;">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>Request Item</span>
+            </button>
+          </div>
+
+          <!-- My Submissions & Live Progress Tracker -->
+          <div class="user-activity-section">
+            <div class="activity-section-header">
+              <h4 style="font-size: 0.92rem; font-weight: 800; display: flex; align-items: center; gap: 6px;">
+                <svg class="svg-icon icon-xs" style="color: var(--accent-primary);" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                My Activity & Track Status
+              </h4>
+            </div>
+
+            <div class="activity-tabs">
+              <button type="button" class="activity-tab-btn active" id="tabMyRequestsBtn">
+                My Requests (<span id="userRequestsCountBadge">0</span>)
+              </button>
+              <button type="button" class="activity-tab-btn" id="tabMyReportsBtn">
+                My Reports (<span id="userReportsCountBadge">0</span>)
+              </button>
+            </div>
+
+            <!-- My Requests Feed -->
+            <div id="userRequestsContainer" class="activity-list-wrapper">
+              <div id="userRequestsList" class="activity-feed">
+                <div style="text-align: center; color: var(--text-muted); padding: 18px; font-size: 0.82rem;">
+                  No item requests submitted yet.
+                </div>
+              </div>
+            </div>
+
+            <!-- My Reports Feed -->
+            <div id="userReportsContainer" class="activity-list-wrapper" style="display: none;">
+              <div id="userReportsList" class="activity-feed">
+                <div style="text-align: center; color: var(--text-muted); padding: 18px; font-size: 0.82rem;">
+                  No issue reports submitted yet.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer / Sign Out -->
+          <div class="form-actions" style="margin-top: 18px; justify-content: space-between;">
+            <button type="button" class="btn-secondary" data-close-modal="userAuthModal">Close</button>
+            <button type="button" id="btnUserLogout" class="btn-secondary" style="color: var(--color-danger); border-color: rgba(239, 68, 68, 0.4);">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dedicated About & Community Hub Section (Open to All Users & Guests) -->
+      <div id="mainAboutSection" style="display: none;">
+        <div class="about-card-body" style="padding: 18px; background: var(--bg-surface-elevated); border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div class="brand-icon" style="width: 36px; height: 36px; border-radius: 8px;">
+                <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <h4 id="profileAboutTitle" class="text-gradient" style="font-size: 1.15rem; font-weight: 800;">About UNICORN GOODS</h4>
+            </div>
+            <span id="profileAboutVersion" class="status-pill status-pill-approved" style="font-size: 0.72rem; padding: 3px 10px; font-weight: 700;">v2.4.0</span>
+          </div>
+
+          <p id="profileAboutTagline" style="font-size: 0.88rem; font-weight: 700; color: var(--accent-primary); margin-bottom: 12px;">
+            Curated Free Digital Library & Study Hub
+          </p>
+
+          <p id="profileAboutContent" style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.65; margin-bottom: 18px; white-space: pre-line;">
+            Welcome to UNICORN GOODS — a community-driven digital download platform providing verified textbooks, lecture notes, APKs, and desktop utilities with high-speed direct downloads.
+          </p>
+
+          <!-- PC Feature Highlights Grid -->
+          <div class="about-features-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;">
+            <div class="about-feature-box" style="padding: 10px; background: var(--bg-surface); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+              <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">⚡ High Speed Links</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">Direct cloud downloads without link shorteners.</div>
+            </div>
+            <div class="about-feature-box" style="padding: 10px; background: var(--bg-surface); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+              <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">🛡️ Safe & Verified</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">Hand-tested textbooks, APKs & source files.</div>
+            </div>
+          </div>
+
+          <div id="profileAboutContactWrap">
+            <a id="profileAboutContactBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn-primary" style="width: 100%; justify-content: center; font-size: 0.88rem; padding: 11px; font-weight: 700;">
+              <span id="profileAboutContactText">Join Community & Support ↗</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="form-actions" style="margin-top: 16px; justify-content: flex-end;">
+          <button type="button" class="btn-secondary" data-close-modal="userAuthModal">Close</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 2. Starting Welcome / Announcement Popup Modal (Managed by Admin) -->
+  <div id="startPopupModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 480px; text-align: center;">
+      <div class="modal-header" style="justify-content: flex-end; margin-bottom: 10px;">
+        <button type="button" class="modal-close-btn" data-close-modal="startPopupModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <img id="startPopupImg" src="" alt="Announcement" class="popup-img" style="display: none;">
+      
+      <h3 class="modal-title text-gradient" id="startPopupTitle" style="margin-bottom: 10px;">Announcement</h3>
+      <p id="startPopupMessage" style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px; white-space: pre-line;">
+        Welcome to UNICORN GOODS!
+      </p>
+
+      <div class="form-actions" style="justify-content: center; gap: 12px;">
+        <button type="button" class="btn-secondary" id="btnDismissPopup" data-close-modal="startPopupModal">
+          Dismiss
+        </button>
+        <a id="startPopupCtaBtn" href="#" target="_blank" rel="noopener" class="btn-primary" style="display: none;">
+          <span>Explore Now</span>
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Request Item Modal -->
+  <div id="requestModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="modal-title">Request Material or Software</h3>
+          <p class="modal-subtitle">Can't find what you're looking for? Let our community admins know!</p>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="requestModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="requestForm">
+        <div class="form-group">
+          <label class="form-label" for="reqItemName">Item / Subject / App Name</label>
+          <input type="text" id="reqItemName" class="form-input" placeholder="e.g. Computer Networks Semester 4 Notes / VS Code APK" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reqCategory">Category</label>
+          <select id="reqCategory" class="form-select" required>
+            <option value="Study Material">Study Material</option>
+            <option value="Notes">Notes & PDFs</option>
+            <option value="APK">APK / Android</option>
+            <option value="Software">Software / Windows / Mac</option>
+            <option value="Tools">Tools & Utilities</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reqDetails">Details / Description / Reference Link (Optional)</label>
+          <textarea id="reqDetails" class="form-textarea" placeholder="Add author, semester, version, or any specific details..."></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" data-close-modal="requestModal">Cancel</button>
+          <button type="submit" id="btnSubmitRequest" class="btn-primary">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Submit Request
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4. Report Product Modal -->
+  <div id="reportModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="modal-title">Report an Issue</h3>
+          <p class="modal-subtitle">Help us maintain clean, working downloads.</p>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="reportModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="reportForm">
+        <input type="hidden" id="reportProductId">
+        <div class="form-group">
+          <label class="form-label">Item Being Reported</label>
+          <input type="text" id="reportProductTitle" class="form-input" readonly style="opacity: 0.8; background: var(--bg-surface-elevated);">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reportIssue">Issue Description</label>
+          <select id="reportReason" class="form-select" required style="margin-bottom: 8px;">
+            <option value="Broken Download Link">Broken / Dead Download Link</option>
+            <option value="Corrupted File / Incomplete">Corrupted File / Incomplete Note</option>
+            <option value="Outdated Version">Outdated Version</option>
+            <option value="Copyright / DMCA Violation">Copyright / DMCA Concern</option>
+            <option value="Other">Other Issue</option>
+          </select>
+          <textarea id="reportIssue" class="form-textarea" placeholder="Provide extra details so admins can fix it quickly..." required></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" data-close-modal="reportModal">Cancel</button>
+          <button type="submit" id="btnSubmitReport" class="btn-primary" style="background: var(--color-danger);">
+            <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            Send Report
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 5. Product Quick-View / Detail Modal -->
+  <div id="productDetailModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 580px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span id="detailBadge" class="card-category-badge" style="width: fit-content;">Category</span>
+          <h3 class="modal-title" id="detailTitle">Product Title</h3>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="productDetailModal">
+          <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div style="display: flex; gap: 18px; margin-bottom: 20px; align-items: center;">
+        <img id="detailImg" src="" alt="Icon" class="card-app-icon" style="width: 80px; height: 80px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-size: 0.85rem; color: var(--text-muted);" id="detailDate">Added Recently</span>
+          <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
+            <button id="detailSaveBtn" class="btn-secondary" style="padding: 4px 12px; font-size: 0.75rem;">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              <span id="detailSaveText">Save Item</span>
+            </button>
+            <button id="detailShareBtn" class="btn-secondary" style="padding: 4px 12px; font-size: 0.75rem;">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              Share Link
+            </button>
+            <button id="detailReportBtn" class="btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; color: var(--color-danger);">
+              <svg class="svg-icon icon-xs" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+              Report
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description & Details</label>
+        <p id="detailDesc" style="font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary); white-space: pre-line; background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);"></p>
+      </div>
+      <div class="form-actions" style="margin-top: 20px;">
+        <button type="button" class="btn-secondary" data-close-modal="productDetailModal">Close</button>
+        <a id="detailDownloadBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn-primary">
+          <svg class="svg-icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>GET NOW</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Stack -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- ==================== FOOTER ==================== -->
+  <footer class="app-footer">
+    <div class="container footer-inner">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span><strong>UNICORN GOODS</strong></span>
+        <span>• Serverless Digital Download Platform</span>
+      </div>
+      <div class="footer-links">
+        <a href="#/home" data-link>Home</a>
+        <a href="#/study-material" data-link>Study Materials</a>
+        <a href="#/notes" data-link>Notes</a>
+        <a href="#/apks" data-link>APKs & Software</a>
+        <a href="javascript:void(0)" id="footerAboutLink" style="color: var(--accent-primary); font-weight: 600;">About UNICORN</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- App Logic (ES6 Module) -->
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
