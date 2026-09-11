@@ -204,17 +204,10 @@ async def check_channel_membership(user_id: int, bot) -> bool:
     for target in targets:
         try:
             member = await bot.get_chat_member(chat_id=target, user_id=user_id)
-            if member.status in [
-                constants.ChatMemberStatus.CREATOR,
-                constants.ChatMemberStatus.ADMINISTRATOR,
-                constants.ChatMemberStatus.MEMBER,
-                constants.ChatMemberStatus.RESTRICTED,
-            ]:
+            status_str = str(getattr(member.status, "value", member.status)).lower()
+            if status_str in ["owner", "creator", "administrator", "member", "restricted"]:
                 return True
-            elif member.status in [
-                constants.ChatMemberStatus.LEFT,
-                constants.ChatMemberStatus.BANNED,
-            ]:
+            elif status_str in ["left", "banned", "kicked"]:
                 return False
         except Exception as e:
             err_str = str(e).lower()
