@@ -18,6 +18,8 @@ Features:
 import os
 import sys
 import html
+import json
+import re
 import time
 import logging
 import asyncio
@@ -54,19 +56,38 @@ logging.basicConfig(
 logger = logging.getLogger("UnicornGoodsBot")
 
 # -----------------------------------------------------------------------------
-# 2. BOT & FIREBASE CREDENTIALS
+# 2. BOT, OPENROUTER AI & FIREBASE CREDENTIALS
 # -----------------------------------------------------------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8910019479:AAHYV5pFGGXjpbjqv8ZdUqKslZDh7CBKqGk")
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@its_vivek_x_sakku")
+REQUIRED_CHANNEL_ID = -1002187186013
 REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/its_vivek_x_sakku")
 FIREBASE_RTDB_URL = os.getenv(
     "FIREBASE_RTDB_URL", "https://unicorn-goods-default-rtdb.firebaseio.com"
 ).rstrip("/")
+
+# OpenRouter WildXbaba AI Credentials
+OPENROUTER_API_KEY = os.getenv(
+    "OPENROUTER_API_KEY",
+    "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",
+)
+PRIMARY_AI_MODEL = "google/gemma-4-26b-a4b-it:free"
+FALLBACK_AI_MODELS = [
+    "nex-agi/nex-n2.5-mini:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "inclusionai/ling-3.0-flash-vl:free",
+]
+AI_NAME = "WildXbaba"
+
 # In-memory session tracking for active users & notified requests
 ADMIN_USER_IDS = set()
 NOTIFIED_REQUEST_STATUS: Dict[str, str] = {}
 NOTIFIED_REPORT_STATUS: Dict[str, str] = {}
-LAST_SEEN_NOTIF_TS = int(time.time() * 1000)
+NOTIFIED_BROADCAST_IDS: set = set()
+BOT_START_TIME = int(time.time() * 1000)
+
+# Multi-turn conversation memory for WildXbaba AI (User ID -> List of messages)
+AI_CHAT_MEMORY: Dict[int, List[Dict[str, Any]]] = {}
 
 # Conversation States
 (
@@ -178,24 +199,33 @@ class FirebaseRTDB:
 # 4. FORCE-SUBSCRIBE VERIFICATION (FSUB)
 # -----------------------------------------------------------------------------
 async def check_channel_membership(user_id: int, bot) -> bool:
-    """Verifies whether the user is a member of @its_vivek_x_sakku."""
-    try:
-        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
-        if member.status in [
-            constants.ChatMemberStatus.CREATOR,
-            constants.ChatMemberStatus.ADMINISTRATOR,
-            constants.ChatMemberStatus.MEMBER,
-            constants.ChatMemberStatus.RESTRICTED,
-        ]:
-            return True
-        return False
-    except Exception as e:
-        logger.warning(
-            f"Membership check warning for user {user_id} in {REQUIRED_CHANNEL}: {e}. "
-            "Ensure the bot is added as an administrator to the channel."
-        )
-        # If bot is not yet added to channel as admin, allow fallback so bot doesn't freeze
-        return True
+    """Verifies whether the user is a member of @its_vivek_x_sakku (ID: -1002187186013)."""
+    targets = [REQUIRED_CHANNEL_ID, REQUIRED_CHANNEL]
+    for target in targets:
+        try:
+            member = await bot.get_chat_member(chat_id=target, user_id=user_id)
+            if member.status in [
+                constants.ChatMemberStatus.CREATOR,
+                constants.ChatMemberStatus.ADMINISTRATOR,
+                constants.ChatMemberStatus.MEMBER,
+                constants.ChatMemberStatus.RESTRICTED,
+            ]:
+                return True
+            elif member.status in [
+                constants.ChatMemberStatus.LEFT,
+                constants.ChatMemberStatus.BANNED,
+            ]:
+                return False
+        except Exception as e:
+            err_str = str(e).lower()
+            if "user not found" in err_str or "participant" in err_str:
+                return False
+            if "member list is inaccessible" in err_str or "chat_admin_required" in err_str:
+                logger.warning(
+                    f"⚠️ Bot must be added as an Administrator to channel {target} to verify members."
+                )
+                return False
+    return False
 
 def get_fsub_keyboard() -> InlineKeyboardMarkup:
     buttons = [
@@ -474,14 +504,188 @@ async def show_product_detail(update: Update, product_id: str) -> None:
         )
 
 # -----------------------------------------------------------------------------
-# 8. SMART UNIVERSAL AUTO-SEARCH (ON TYPED TEXT)
+# 8. WILDXBABA AI COMPANION & SMART CONVERSATIONAL SEARCH
 # -----------------------------------------------------------------------------
+def find_matching_products(query_text: str, products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Finds products matching terms in the query with relevance scoring."""
+    search_term = query_text.lower()
+    matches = []
+    for p in products:
+        p_title = (p.get("title") or "").lower()
+        p_desc = (p.get("desc") or "").lower()
+        p_cat = (p.get("category") or "").lower()
+
+        score = 0
+        if search_term in p_title or p_title in search_term:
+            score += 5
+        elif any(word in p_title for word in search_term.split() if len(word) > 2):
+            score += 3
+        if any(word in p_desc for word in search_term.split() if len(word) > 2):
+            score += 1
+        if any(word in p_cat for word in search_term.split() if len(word) > 2):
+            score += 1
+
+        if score > 0:
+            matches.append((p, score))
+
+    matches.sort(key=lambda x: x[1], reverse=True)
+    return [item[0] for item in matches[:4]]
+
+
+async def ask_wildxbaba_ai(
+    user_id: int,
+    user_name: str,
+    user_query: str,
+    matched_products: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Interacts with OpenRouter AI (google/gemma-4-26b-a4b-it:free) as WildXbaba.
+    Maintains multi-turn context, preserves reasoning_details, and parses autonomous actions.
+    """
+    # Context regarding any matching goods from UNICORN GOODS
+    lib_context = ""
+    if matched_products:
+        lib_context = "\n[UNICORN GOODS LIBRARY MATCHES FOR USER'S QUERY]:\n"
+        for idx, p in enumerate(matched_products, start=1):
+            p_title = p.get("title", "Untitled")
+            p_cat = p.get("category", "General")
+            p_desc = (p.get("desc") or "").strip()[:80]
+            lib_context += f"{idx}. Title: {p_title} | Category: {p_cat} | Info: {p_desc}\n"
+        lib_context += (
+            "Tell the user happily that these materials are ready in UNICORN GOODS "
+            "and they can tap the download button below!\n"
+        )
+
+    system_content = (
+        f"You are {AI_NAME}, the official, super friendly AI companion for UNICORN GOODS "
+        f"(a free digital download library for study materials, notes, APKs, PC software, and utilities).\n\n"
+        f"Persona:\n"
+        f"- Talk like a real, cool, caring friend/brother ('ek dost ki tarah baat karna') to {user_name}.\n"
+        f"- Use casual Hinglish/Hindi/English (e.g. 'Arre bhai', 'Haan dost', 'Bolo kya chahiye', 'Main hu na', 'Befikar reh').\n"
+        f"- Keep replies short, conversational, and energetic (2 to 4 sentences).\n\n"
+        f"Autonomous Actions:\n"
+        f"- If the user asks to upload, add, or request an item (e.g. 'bhai ye book upload kardo', 'can you add this apk?'):\n"
+        f"  Assure them warmly, and append on a separate final line:\n"
+        f"  [ACTION:REQUEST|<ItemName>|<Category>|<Details>]\n"
+        f"  (Category must be one of: Study Material, Notes, APK, Software, Tools, Other)\n\n"
+        f"- If the user reports a broken link, corrupted file, or issue (e.g. 'link error de raha hai', 'download broken hai'):\n"
+        f"  Comfort them that it's being reported to the team to fix, and append on a separate final line:\n"
+        f"  [ACTION:REPORT|<Reason>|<Details>]\n"
+        f"{lib_context}"
+    )
+
+    # Initialize or fetch user history
+    history = AI_CHAT_MEMORY.get(user_id, [])
+    if len(history) > 8:
+        history = history[-8:]
+
+    messages = [{"role": "system", "content": system_content}]
+    for h in history:
+        msg_obj = {"role": h["role"], "content": h["content"]}
+        if "reasoning_details" in h and h["reasoning_details"]:
+            msg_obj["reasoning_details"] = h["reasoning_details"]
+        messages.append(msg_obj)
+
+    messages.append({"role": "user", "content": user_query})
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://unicorn-goods.web.app",
+        "X-Title": "UNICORN GOODS Telegram Bot",
+    }
+
+    models_to_try = [PRIMARY_AI_MODEL] + FALLBACK_AI_MODELS
+    chosen_reply = ""
+    reasoning_details = None
+
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        for model_name in models_to_try:
+            try:
+                payload = {
+                    "model": model_name,
+                    "messages": messages,
+                    "reasoning": {"enabled": True},
+                }
+                res = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    choice = data["choices"][0]["message"]
+                    chosen_reply = choice.get("content", "").strip()
+                    reasoning_details = choice.get("reasoning_details")
+                    break
+                elif res.status_code == 429:
+                    logger.warning(f"Model {model_name} rate limited, trying fallback...")
+                    continue
+                else:
+                    logger.warning(f"Model {model_name} returned status {res.status_code}")
+                    continue
+            except Exception as e:
+                logger.warning(f"Error calling {model_name}: {e}")
+                continue
+
+    if not chosen_reply:
+        if matched_products:
+            chosen_reply = (
+                f"Arre {user_name} bhai! Main yahan hu! Mujhe teri query se match hone wale "
+                f"materials mil gaye hain. Neeche diye gaye button se direct download kar le dost! 🚀"
+            )
+        else:
+            chosen_reply = (
+                f"Arre {user_name} bhai! Bolo kya chahiye? Main WildXbaba hu. Koi study material, "
+                f"notes, APK ya software chahiye toh naam batao, main nikaal ke deta hu! 😎"
+            )
+
+    # Update conversation memory
+    updated_history = list(history)
+    updated_history.append({"role": "user", "content": user_query})
+    assistant_msg: Dict[str, Any] = {"role": "assistant", "content": chosen_reply}
+    if reasoning_details:
+        assistant_msg["reasoning_details"] = reasoning_details
+    updated_history.append(assistant_msg)
+    AI_CHAT_MEMORY[user_id] = updated_history[-8:]
+
+    # Parse actions
+    clean_text = chosen_reply
+    parsed_action = None
+
+    req_match = re.search(r"\[ACTION:REQUEST\|(.*?)\|(.*?)\|(.*?)\]", clean_text)
+    rep_match = re.search(r"\[ACTION:REPORT\|(.*?)\|(.*?)\]", clean_text)
+
+    if req_match:
+        parsed_action = {
+            "type": "REQUEST",
+            "item": req_match.group(1).strip(),
+            "category": req_match.group(2).strip(),
+            "details": req_match.group(3).strip(),
+        }
+        clean_text = re.sub(r"\[ACTION:REQUEST\|.*?\]", "", clean_text).strip()
+    elif rep_match:
+        parsed_action = {
+            "type": "REPORT",
+            "reason": rep_match.group(1).strip(),
+            "details": rep_match.group(2).strip(),
+        }
+        clean_text = re.sub(r"\[ACTION:REPORT\|.*?\]", "", clean_text).strip()
+
+    return {
+        "text": clean_text,
+        "action": parsed_action,
+    }
+
+
 async def handle_user_text_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Whenever a user types ANY message, search the library for matching content."""
+    """Handles text messages by chatting with WildXbaba AI & recommending goods."""
     user = update.effective_user
     msg = update.effective_message
     if not msg or not msg.text:
         return
+
+    # Track user for broadcasts
+    await FirebaseRTDB.register_bot_user(user)
 
     # Check force-subscribe
     is_member = await check_channel_membership(user.id, context.bot)
@@ -491,92 +695,105 @@ async def handle_user_text_search(update: Update, context: ContextTypes.DEFAULT_
 
     query_text = msg.text.strip()
     if query_text.startswith("/"):
-        return  # Handled by command handlers
+        # If it's /ai or /ask, strip the command
+        if query_text.startswith("/ai ") or query_text.startswith("/ask "):
+            query_text = query_text.split(" ", 1)[1].strip()
+        else:
+            return  # Handled by other commands
 
-    search_term = query_text.lower()
+    # Send typing action
+    try:
+        await context.bot.send_chat_action(chat_id=msg.chat_id, action=constants.ChatAction.TYPING)
+    except Exception:
+        pass
+
+    # Find matching products from library
     products = await FirebaseRTDB.get_products()
+    matched = find_matching_products(query_text, products)
 
-    # Match search keywords
-    matches = []
-    for p in products:
-        p_title = (p.get("title") or "").lower()
-        p_desc = (p.get("desc") or "").lower()
-        p_cat = (p.get("category") or "").lower()
-
-        # Score matching
-        if search_term in p_title or p_title in search_term:
-            matches.append((p, 3))
-        elif any(word in p_title for word in search_term.split() if len(word) > 2):
-            matches.append((p, 2))
-        elif search_term in p_desc or search_term in p_cat:
-            matches.append((p, 1))
-
-    # Sort by relevance score
-    matches.sort(key=lambda x: x[1], reverse=True)
-    results = [item[0] for item in matches[:8]]
-
-    if not results:
-        no_res_text = (
-            f"🔍 <b>No material found matching:</b> <i>'{html.escape(query_text)}'</i>\n\n"
-            "💡 Don't worry! Our library is community-driven. You can submit a request right now "
-            "and our admins will upload it for you!"
-        )
-        keyboard = [
-            [InlineKeyboardButton(f"➕ Request '{query_text[:20]}'", callback_data=f"req_prefill:{query_text[:30]}")],
-            [InlineKeyboardButton("📚 Browse All Categories", callback_data="nav:categories")],
-            [InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")],
-        ]
-        await msg.reply_text(no_res_text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-
-    # If exactly 1 match found, send the full product card directly!
-    if len(results) == 1:
-        p = results[0]
-        title = p.get("title", "Untitled")
-        category = p.get("category", "General")
-        desc = p.get("desc", "Direct cloud link ready.")
-        img_url = p.get("imgUrl", "").strip()
-
-        caption = (
-            f"🎯 <b>Match Found: {html.escape(title)}</b>\n"
-            f"🏷️ <b>Category:</b> <code>{html.escape(category)}</code>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📝 <b>Description:</b>\n{html.escape(desc)}\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡ <i>Click GET NOW below to download directly:</i>"
-        )
-        keyboard = get_product_card_keyboard(p, user.id)
-
-        if img_url and img_url.startswith("http"):
-            try:
-                await msg.reply_photo(photo=img_url, caption=caption, parse_mode=constants.ParseMode.HTML, reply_markup=keyboard)
-                return
-            except Exception:
-                pass
-
-        await msg.reply_text(caption, parse_mode=constants.ParseMode.HTML, reply_markup=keyboard, disable_web_page_preview=True)
-        return
-
-    # If multiple matches found, render interactive search result list
-    res_text = (
-        f"🔍 <b>Found {len(results)} materials matching:</b> <i>'{html.escape(query_text)}'</i>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "👇 <i>Select an item below to view and download:</i>\n\n"
+    # Ask WildXbaba AI
+    ai_result = await ask_wildxbaba_ai(
+        user_id=user.id,
+        user_name=user.first_name or "Dost",
+        user_query=query_text,
+        matched_products=matched,
     )
 
-    buttons = []
-    for idx, p in enumerate(results, start=1):
-        title = p.get("title", "Untitled")
-        cat = p.get("category", "Other")
-        res_text += f"<b>{idx}.</b> {html.escape(title)} <code>[{html.escape(cat)}]</code>\n"
-        buttons.append([
-            InlineKeyboardButton(f"📥 #{idx} {title[:28]}", callback_data=f"view_prod:{p['id']}")
-        ])
+    reply_text = ai_result["text"]
+    action = ai_result.get("action")
 
-    buttons.append([InlineKeyboardButton("➕ Request Another Material", callback_data="nav:request")])
+    extra_notice = ""
+    # Execute autonomous request action
+    if action and action["type"] == "REQUEST":
+        req_name = action.get("item") or query_text
+        req_cat = action.get("category") or "Study Material"
+        req_det = action.get("details") or "Requested via WildXbaba AI chat"
+        payload = {
+            "itemName": req_name,
+            "userName": user.full_name or user.username or f"User_{user.id}",
+            "category": req_cat,
+            "details": req_det,
+            "status": "pending",
+            "adminReply": "",
+            "timestamp": int(time.time() * 1000),
+            "telegramUserId": user.id,
+            "telegramUsername": f"@{user.username}" if user.username else "",
+        }
+        req_id = await FirebaseRTDB.post("requests", payload)
+        ticket_no = req_id[-6:].upper() if req_id else "SUBMITTED"
+        extra_notice = (
+            f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎫 <b>Item Request Ticket:</b> <code>#REQ-{ticket_no}</code>\n"
+            f"📦 <b>Material:</b> {html.escape(req_name)} [<code>{html.escape(req_cat)}</code>]\n"
+            f"🔔 <i>Admin upload hote hi aapko is bot par update DM mil jayega!</i>"
+        )
+
+    # Execute autonomous report action
+    elif action and action["type"] == "REPORT":
+        rep_reason = action.get("reason") or "Broken Link"
+        rep_det = action.get("details") or "Reported via WildXbaba AI chat"
+        payload = {
+            "productId": "GENERAL",
+            "productTitle": "User AI Report",
+            "userName": user.full_name or user.username or f"User_{user.id}",
+            "reason": rep_reason,
+            "issue": rep_det,
+            "status": "pending",
+            "adminReply": "",
+            "timestamp": int(time.time() * 1000),
+            "telegramUserId": user.id,
+            "telegramUsername": f"@{user.username}" if user.username else "",
+        }
+        rep_id = await FirebaseRTDB.post("reports", payload)
+        ticket_no = rep_id[-6:].upper() if rep_id else "REP-OK"
+        extra_notice = (
+            f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🚨 <b>Issue Report Ticket:</b> <code>#REP-{ticket_no}</code>\n"
+            f"📌 <b>Reason:</b> {html.escape(rep_reason)}\n"
+            f"🛠️ <i>Humari team ise promptly investigate aur fix karegi!</i>"
+        )
+
+    full_message = f"🤖 <b>WildXbaba:</b>\n{html.escape(reply_text)}{extra_notice}"
+
+    # Build interactive buttons
+    buttons = []
+    if matched:
+        for p in matched[:3]:
+            p_title = p.get("title", "Item")[:30]
+            buttons.append([InlineKeyboardButton(f"📥 GET NOW: {p_title}", callback_data=f"view_prod:{p['id']}")])
+
+    buttons.append([
+        InlineKeyboardButton("➕ Request Item", callback_data="nav:request"),
+        InlineKeyboardButton("📋 My Activity", callback_data="nav:activity"),
+    ])
     buttons.append([InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")])
 
-    await msg.reply_text(res_text, parse_mode=constants.ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    await msg.reply_text(
+        full_message,
+        parse_mode=constants.ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        disable_web_page_preview=True,
+    )
 
 # -----------------------------------------------------------------------------
 # 9. REQUEST MATERIAL FLOW (CONVERSATION HANDLER)
@@ -1088,9 +1305,10 @@ async def callback_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.answer("🎉 Verification successful! Welcome to UNICORN GOODS.", show_alert=True)
             welcome_text = (
                 f"👋 <b>Welcome, {html.escape(user.first_name)}!</b>\n\n"
-                "🦄 <b>UNICORN GOODS Main Menu</b>\n"
+                "🦄 <b>UNICORN GOODS Main Menu & AI Hub</b>\n"
                 "<i>Curated Free Digital Download Hub</i>\n\n"
-                "👇 Choose a category or browse all materials below:"
+                "🤖 Chat with <b>WildXbaba AI</b> directly by typing in this chat anytime!\n"
+                "👇 Or choose a category below to explore:"
             )
             await query.edit_message_text(
                 welcome_text,
@@ -1098,7 +1316,17 @@ async def callback_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE
                 reply_markup=get_main_menu_keyboard(),
             )
         else:
-            await query.answer("⚠️ You have not joined the channel yet! Please join first.", show_alert=True)
+            try:
+                await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID, user_id=user.id)
+            except Exception as e:
+                err_str = str(e).lower()
+                if "member list is inaccessible" in err_str or "admin" in err_str:
+                    await query.answer(
+                        "⚠️ Setup Alert: Bot ko channel @its_vivek_x_sakku me Administrator banayein taaki verification activate ho sake!",
+                        show_alert=True,
+                    )
+                    return
+            await query.answer("⚠️ You have not joined @its_vivek_x_sakku yet! Please join first.", show_alert=True)
         return
 
     # Force-subscribe check for all other actions
@@ -1254,6 +1482,40 @@ async def notification_worker(app) -> None:
                     else:
                         NOTIFIED_REPORT_STATUS[rid] = cache_key
 
+            # 3. Check for New Broadcasts in 'notifications' and notify all users
+            notifs_raw = await FirebaseRTDB.get("notifications")
+            if notifs_raw and isinstance(notifs_raw, dict):
+                for nid, ndata in notifs_raw.items():
+                    if not isinstance(ndata, dict):
+                        continue
+                    ts = ndata.get("timestamp", 0)
+                    if nid not in NOTIFIED_BROADCAST_IDS:
+                        NOTIFIED_BROADCAST_IDS.add(nid)
+                        # Broadcast if created recently (within last 30 minutes or after bot start)
+                        if ts > (BOT_START_TIME - 1800000):
+                            b_msg = ndata.get("message", "").strip()
+                            b_type = ndata.get("type", "info").upper()
+                            type_icon = "📢" if b_type == "INFO" else ("🚨" if b_type == "ALERT" else "✨")
+                            broadcast_card = (
+                                f"{type_icon} <b>UNICORN GOODS OFFICIAL BROADCAST</b>\n"
+                                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                                f"{html.escape(b_msg)}\n"
+                                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                                "⚡ <i>Direct update from UNICORN GOODS. Browse anytime below!</i>"
+                            )
+                            all_users = await FirebaseRTDB.get_all_bot_users()
+                            for uid in all_users:
+                                try:
+                                    await app.bot.send_message(
+                                        chat_id=uid,
+                                        text=broadcast_card,
+                                        parse_mode=constants.ParseMode.HTML,
+                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Open Library", callback_data="nav:menu")]]),
+                                    )
+                                    await asyncio.sleep(0.05)
+                                except Exception as e:
+                                    logger.debug(f"Broadcast push failed for {uid}: {e}")
+
         except Exception as e:
             logger.debug(f"Worker iteration notice: {e}")
 
@@ -1311,6 +1573,8 @@ def main() -> None:
     # Basic Commands
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("menu", start_command))
+    application.add_handler(CommandHandler("ai", handle_user_text_search))
+    application.add_handler(CommandHandler("ask", handle_user_text_search))
     application.add_handler(CommandHandler("search", search_command))
     application.add_handler(CommandHandler("activity", activity_command))
     application.add_handler(CommandHandler("saved", saved_command))
@@ -1330,6 +1594,7 @@ def main() -> None:
         try:
             await app.bot.set_my_commands([
                 BotCommand("start", "Open main menu & explore materials"),
+                BotCommand("ai", "Chat with WildXbaba AI companion"),
                 BotCommand("menu", "Browse materials by category"),
                 BotCommand("search", "Search books, notes, APKs & tools"),
                 BotCommand("request", "Request missing study material or app"),
