@@ -21,6 +21,8 @@ import html
 import json
 import re
 import time
+import base64
+import random
 import logging
 import asyncio
 from typing import Optional, Dict, Any, List
@@ -56,7 +58,7 @@ logging.basicConfig(
 logger = logging.getLogger("UnicornGoodsBot")
 
 # -----------------------------------------------------------------------------
-# 2. BOT, OPENROUTER AI & FIREBASE CREDENTIALS
+# 2. BOT & FIREBASE CREDENTIALS
 # -----------------------------------------------------------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8910019479:AAHYV5pFGGXjpbjqv8ZdUqKslZDh7CBKqGk")
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@its_vivek_x_sakku")
@@ -66,19 +68,6 @@ FIREBASE_RTDB_URL = os.getenv(
     "FIREBASE_RTDB_URL", "https://unicorn-goods-default-rtdb.firebaseio.com"
 ).rstrip("/")
 
-# OpenRouter WildXbaba AI Credentials
-OPENROUTER_API_KEY = os.getenv(
-    "OPENROUTER_API_KEY",
-    "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",
-)
-PRIMARY_AI_MODEL = "google/gemma-4-26b-a4b-it:free"
-FALLBACK_AI_MODELS = [
-    "nex-agi/nex-n2.5-mini:free",
-    "liquid/lfm-2.5-2.6b:free",
-    "inclusionai/ling-3.0-flash-vl:free",
-]
-AI_NAME = "WildXbaba"
-
 # In-memory session tracking for active users & notified requests
 ADMIN_USER_IDS = set()
 NOTIFIED_REQUEST_STATUS: Dict[str, str] = {}
@@ -86,8 +75,55 @@ NOTIFIED_REPORT_STATUS: Dict[str, str] = {}
 NOTIFIED_BROADCAST_IDS: set = set()
 BOT_START_TIME = int(time.time() * 1000)
 
-# Multi-turn conversation memory for WildXbaba AI (User ID -> List of messages)
-AI_CHAT_MEMORY: Dict[int, List[Dict[str, Any]]] = {}
+# -----------------------------------------------------------------------------
+# SEARCH UTILITIES & SYNONYMS (FAST LOCAL RTDB SEARCH)
+# -----------------------------------------------------------------------------
+STOP_WORDS = {
+    "the", "a", "an", "is", "in", "for", "of", "to", "and", "or", "on", "at", "by", "with",
+    "bhai", "bahi", "bro", "mujhe", "chahiye", "dedo", "karo", "please", "help",
+    "kuch", "hai", "kya", "link", "download", "free", "app", "apk", "bot",
+    "de", "do", "bhejo", "ka", "ki", "ke", "ko", "se", "aur", "ek", "par", "me", "mein",
+    "give", "want", "need", "send", "plz", "pls",
+}
+
+SYNONYMS = {
+    "book": ["book", "books", "pdf", "goodreads", "modules", "ncert"],
+    "books": ["book", "books", "pdf", "goodreads", "modules", "ncert"],
+    "notes": ["notes", "pdf", "study material", "goodreads", "modules"],
+    "capcut": ["capcut", "video editor", "editing", "kinemaster"],
+    "pw": ["pw", "physics wallah", "study rays", "pw thor", "study panda", "prime study"],
+    "physics wallah": ["pw", "physics wallah", "study rays", "pw thor", "study panda"],
+    "physics": ["physics", "pw", "iit", "jee", "neet"],
+    "jee": ["jee", "iit", "modules", "allen", "free iit-jee"],
+    "neet": ["neet", "ncert", "pyqs", "pyq", "allen"],
+    "music": ["song", "spotify", "yt music", "song app"],
+    "song": ["song", "spotify", "yt music", "song app"],
+    "songs": ["song", "spotify", "yt music", "song app"],
+    "youtube": ["vanced", "yt", "youtube"],
+    "yt": ["vanced", "yt", "youtube"],
+    "movies": ["netmirror", "vardaan", "cinema", "ott"],
+    "movie": ["netmirror", "vardaan", "cinema", "ott"],
+    "netflix": ["netmirror", "vardaan", "cinema"],
+    "kinemaster": ["kinemaster", "video editor", "capcut"],
+    "editing": ["capcut", "kinemaster", "video editor"],
+}
+
+def clean_query_tokens(query: str) -> List[str]:
+    words = re.findall(r"\w+", query.lower())
+    clean = [w for w in words if w not in STOP_WORDS and len(w) > 1]
+    return clean if clean else [w for w in words if len(w) > 1]
+
+def clean_telegram_html(text: str) -> str:
+    """Converts markdown formatting to Telegram HTML and sanitizes stray entities."""
+    if not text:
+        return ""
+    # Convert markdown formatting
+    text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<i>\1</i>", text)
+    # Sanitize stray '&' that aren't already valid HTML entities
+    text = re.sub(r"&(?!amp;|lt;|gt;|quot;|#\d+;)", "&amp;", text)
+    return text
 
 # Conversation States
 (
@@ -289,15 +325,17 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
 
 def get_product_card_keyboard(product: Dict[str, Any], user_id: int) -> InlineKeyboardMarkup:
     pid = product.get("id", "")
-    file_url = product.get("fileUrl", "#")
-    buttons = [
-        [InlineKeyboardButton("📥 GET NOW (Direct Link) ↗", url=file_url)],
-        [
-            InlineKeyboardButton("⭐ Save", callback_data=f"save:{pid}"),
-            InlineKeyboardButton("⚠️ Report Issue", callback_data=f"report_item:{pid}"),
-        ],
-        [InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")],
-    ]
+    file_url = (product.get("fileUrl") or product.get("downloadUrl") or product.get("link") or "").strip()
+    buttons = []
+    if file_url and file_url.startswith("http"):
+        buttons.append([InlineKeyboardButton("📥 GET NOW (Direct Link) ↗", url=file_url)])
+    else:
+        buttons.append([InlineKeyboardButton("📥 Download (Ask Admin)", callback_data=f"req_prefill:{product.get('title')}")])
+    buttons.append([
+        InlineKeyboardButton("⭐ Save", callback_data=f"save:{pid}"),
+        InlineKeyboardButton("⚠️ Report Issue", callback_data=f"report_item:{pid}"),
+    ])
+    buttons.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")])
     return InlineKeyboardMarkup(buttons)
 
 def get_category_pagination_keyboard(
@@ -320,9 +358,44 @@ def get_category_pagination_keyboard(
 # -----------------------------------------------------------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
+    msg = update.effective_message
+    chat = update.effective_chat
+    bot_username = context.bot.username or "Unicorngoods_bot"
+
+    is_group = chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]
+
+    # Handle Group / Supergroup chats
+    if is_group:
+        group_text = (
+            "🦄 <b>UNICORN GOODS Bot is active in this group!</b>\n\n"
+            "Access curated free study materials, notes, APKs, PC software, and tools.\n\n"
+            "⚡ <b>Available Group Commands:</b>\n"
+            "• 🔍 <code>/search &lt;item&gt;</code> — Search materials directly in this group\n"
+            "• ➕ <code>/request</code> — Request missing books, notes or tools\n"
+            "• ⚠️ <code>/report</code> — Report a broken link or issue\n"
+            "• 📖 <code>/help</code> — View bot command list & guide"
+        )
+        keyboard = [
+            [
+                InlineKeyboardButton("➕ Request Material (DM) ↗", url=f"https://t.me/{bot_username}?start=request"),
+                InlineKeyboardButton("⚠️ Report Issue (DM) ↗", url=f"https://t.me/{bot_username}?start=report"),
+            ],
+            [
+                InlineKeyboardButton("🌐 Open Web Storefront ↗", url="https://unicorngoods.vercel.app"),
+                InlineKeyboardButton("🦄 Open Bot in DM ↗", url=f"https://t.me/{bot_username}?start=menu"),
+            ],
+        ]
+        await msg.reply_text(
+            group_text,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
+    # Private 1-on-1 Chat Handling
     await FirebaseRTDB.register_bot_user(user)
 
-    # Force-Subscribe check
+    # Force-Subscribe check (Private chat only)
     is_member = await check_channel_membership(user.id, context.bot)
     if not is_member:
         await send_fsub_prompt(update, context)
@@ -333,31 +406,103 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if maint and maint.get("enabled") is True and user.id not in ADMIN_USER_IDS:
         m_title = maint.get("title", "Under Maintenance")
         m_msg = maint.get("message", "We are upgrading UNICORN GOODS. Please check back shortly!")
-        await update.effective_message.reply_text(
+        await msg.reply_text(
             f"🚧 <b>{html.escape(m_title)}</b>\n\n{html.escape(m_msg)}",
             parse_mode=constants.ParseMode.HTML,
         )
         return
 
+    # Handle deep link args (e.g. /start prod_-P-xxxxxx, /start report, /start request, /start req_prefill_xxx)
+    if context.args and len(context.args) > 0:
+        arg = context.args[0].strip()
+        if arg.startswith("prod_"):
+            pid = arg.replace("prod_", "")
+            await show_product_detail(update, pid)
+            return
+        elif arg == "report":
+            await msg.reply_text(
+                "⚠️ <b>Report an Issue / Broken Link</b>\n\nTap below to select the reason for your report:",
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚠️ Start Report Now", callback_data="report_item:GENERAL")]]),
+            )
+            return
+        elif arg == "request":
+            await msg.reply_text(
+                "➕ <b>Request Study Material or Software</b>\n\nTap below to submit your request:",
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➕ Start Request Now", callback_data="nav:request")]]),
+            )
+            return
+        elif arg.startswith("req_prefill_"):
+            cand = arg.replace("req_prefill_", "").replace("_", " ")
+            await msg.reply_text(
+                f"➕ <b>Request Material:</b> <code>{html.escape(cand)}</code>\n\nTap below to proceed with your request:",
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"➕ Request '{cand[:20]}'", callback_data=f"req_prefill:{cand}")]])
+            )
+            return
+        elif arg == "search":
+            await msg.reply_text(
+                "🔍 <b>Universal Material Search</b>\n\nType any book, note, APK or software name directly in chat to search!",
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📚 Browse Categories", callback_data="nav:categories")]]),
+            )
+            return
+
     welcome_text = (
-        f"👋 <b>Hi, {html.escape(user.first_name or 'Friend')}!</b>\n\n"
-        "🦄 Welcome to <b>UNICORN GOODS</b> — your curated free digital download library & study hub.\n\n"
-        "⚡ <b>What you can do here:</b>\n"
-        "• <b>Search anything:</b> Just type ANY book, note, APK or software name in chat!\n"
-        "• <b>Browse Categories:</b> High-speed direct downloads with 0 ads.\n"
-        "• <b>Request Materials:</b> Submit missing requests and get live admin replies.\n"
-        "• <b>Report Broken Links:</b> Report broken links to get them fixed promptly.\n\n"
-        "👇 <i>Choose an option below to get started:</i>"
+        f"👋 <b>Welcome, {html.escape(user.first_name or 'Friend')}!</b>\n\n"
+        "🦄 <b>UNICORN GOODS — Official Telegram Bot</b>\n"
+        "<i>Curated Free Digital Download Library & Study Hub</i>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Explore verified, high-speed cloud downloads with <b>zero ads</b> and <b>zero wait timers</b>:\n\n"
+        "• 📚 <b>Books & Notes:</b> NCERT, NEET PYQs, JEE Modules, Handwritten Notes\n"
+        "• 📱 <b>Premium APKs:</b> Video Editors, Tools, Utilities, Ad-free Apps\n"
+        "• 💻 <b>Study Batches:</b> PW, Physics Wallah, Unacademy, Allen, Testbook\n"
+        "• 🛠️ <b>Software & Tools:</b> Windows & Mac Utilities, Media Tools\n\n"
+        "🔍 <b>Instant Search:</b> Type any material name directly in this chat anytime!"
     )
 
-    await update.effective_message.reply_text(
+    keyboard = [
+        [
+            InlineKeyboardButton("📚 Browse Categories", callback_data="nav:categories"),
+            InlineKeyboardButton("🔍 Search Library", callback_data="nav:search"),
+        ],
+        [
+            InlineKeyboardButton("➕ Request Any Item", callback_data="nav:request"),
+            InlineKeyboardButton("⭐ My Saved Goods", callback_data="nav:saved"),
+        ],
+        [
+            InlineKeyboardButton("📋 My Activity & Status", callback_data="nav:activity"),
+            InlineKeyboardButton("ℹ️ About UNICORN", callback_data="nav:about"),
+        ],
+        [
+            InlineKeyboardButton("🌐 Open Web Storefront ↗", url="https://unicorngoods.vercel.app"),
+        ],
+    ]
+
+    await msg.reply_text(
         welcome_text,
         parse_mode=constants.ParseMode.HTML,
-        reply_markup=get_main_menu_keyboard(),
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
     user = update.effective_user
+    is_group = chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]
+
+    if is_group:
+        help_text = (
+            "📖 <b>UNICORN GOODS Group Commands:</b>\n\n"
+            "🔍 <code>/search &lt;item name&gt;</code> — Search notes, books, APKs or software directly\n"
+            "➕ <code>/request</code> — Request missing study material or software (via DM)\n"
+            "⚠️ <code>/report</code> — Report a broken download link or issue (via DM)\n"
+            "📚 <code>/menu</code> — Group overview and library links\n"
+            "📖 <code>/help</code> — Show this commands guide"
+        )
+        await update.effective_message.reply_text(help_text, parse_mode=constants.ParseMode.HTML)
+        return
+
     is_member = await check_channel_membership(user.id, context.bot)
     if not is_member:
         await send_fsub_prompt(update, context)
@@ -441,12 +586,16 @@ async def render_category_page(
 
 async def show_product_detail(update: Update, product_id: str) -> None:
     query = update.callback_query
+    msg = update.effective_message
+    user_id = update.effective_user.id if update.effective_user else 0
     products = await FirebaseRTDB.get_all_products_raw()
     product = next((p for p in products if p.get("id") == product_id), None)
 
     if not product:
         if query:
             await query.answer("Material not found or deleted.", show_alert=True)
+        elif msg:
+            await msg.reply_text("⚠️ Material not found or deleted.")
         return
 
     title = product.get("title", "Untitled")
@@ -463,12 +612,12 @@ async def show_product_detail(update: Update, product_id: str) -> None:
         "⚡ <i>Verified Direct Cloud Download</i>"
     )
 
-    keyboard = get_product_card_keyboard(product, query.from_user.id if query else 0)
+    keyboard = get_product_card_keyboard(product, user_id)
 
     # Try sending photo if available
     if img_url and img_url.startswith("http"):
         try:
-            if query:
+            if query and query.message:
                 await query.message.reply_photo(
                     photo=img_url,
                     caption=caption,
@@ -476,6 +625,14 @@ async def show_product_detail(update: Update, product_id: str) -> None:
                     reply_markup=keyboard,
                 )
                 await query.answer()
+                return
+            elif msg:
+                await msg.reply_photo(
+                    photo=img_url,
+                    caption=caption,
+                    parse_mode=constants.ParseMode.HTML,
+                    reply_markup=keyboard,
+                )
                 return
         except Exception as e:
             logger.debug(f"Photo send fallback: {e}")
@@ -488,8 +645,8 @@ async def show_product_detail(update: Update, product_id: str) -> None:
             reply_markup=keyboard,
             disable_web_page_preview=True,
         )
-    elif update.effective_message:
-        await update.effective_message.reply_text(
+    elif msg:
+        await msg.reply_text(
             caption,
             parse_mode=constants.ParseMode.HTML,
             reply_markup=keyboard,
@@ -497,301 +654,360 @@ async def show_product_detail(update: Update, product_id: str) -> None:
         )
 
 # -----------------------------------------------------------------------------
-# 8. WILDXBABA AI COMPANION & SMART CONVERSATIONAL SEARCH
+# 8. CATALOG SEARCH ENGINE & UNIVERSAL TEXT HANDLER
 # -----------------------------------------------------------------------------
+
 def find_matching_products(query_text: str, products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Finds products matching terms in the query with relevance scoring."""
-    search_term = query_text.lower()
-    matches = []
+    """Finds products matching terms in the query with semantic synonym expansion and strict word boundary scoring."""
+    tokens = clean_query_tokens(query_text)
+    if not tokens:
+        return []
+
+    expanded_terms = set(tokens)
+    for t in tokens:
+        if t in SYNONYMS:
+            expanded_terms.update(SYNONYMS[t])
+        if t.endswith("s") and len(t) > 3:
+            expanded_terms.add(t[:-1])
+        else:
+            expanded_terms.add(t + "s")
+
+    scored = []
     for p in products:
-        p_title = (p.get("title") or "").lower()
-        p_desc = (p.get("desc") or "").lower()
-        p_cat = (p.get("category") or "").lower()
+        title = (p.get("title") or "").lower()
+        desc = (p.get("desc") or p.get("description") or "").lower()
+        cat = (p.get("category") or "").lower()
+        full_text = f"{title} {cat} {desc}"
 
         score = 0
-        if search_term in p_title or p_title in search_term:
-            score += 5
-        elif any(word in p_title for word in search_term.split() if len(word) > 2):
-            score += 3
-        if any(word in p_desc for word in search_term.split() if len(word) > 2):
-            score += 1
-        if any(word in p_cat for word in search_term.split() if len(word) > 2):
-            score += 1
+        # Check direct token matches
+        for t in tokens:
+            pattern = r"\b" + re.escape(t) + r"\b"
+            if re.search(pattern, title, re.I):
+                score += 80  # Exact whole word in title!
+            elif len(t) >= 4 and t in title:
+                score += 35  # Substring only if token is 4+ chars!
+            elif re.search(pattern, full_text, re.I):
+                score += 15  # Exact whole word in desc/cat!
 
-        if score > 0:
-            matches.append((p, score))
+        # Check expanded synonym terms
+        for et in expanded_terms:
+            pattern = r"\b" + re.escape(et) + r"\b"
+            if re.search(pattern, title, re.I):
+                score += 40
+            elif len(et) >= 4 and et in title:
+                score += 20
+            elif re.search(pattern, full_text, re.I):
+                score += 10
 
-    matches.sort(key=lambda x: x[1], reverse=True)
-    return [item[0] for item in matches[:4]]
+        if score >= 20:  # Robust threshold to eliminate false positives
+            scored.append((p, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [item[0] for item in scored[:4]]
 
 
-async def ask_wildxbaba_ai(
-    user_id: int,
-    user_name: str,
-    user_query: str,
-    matched_products: List[Dict[str, Any]],
-) -> Dict[str, Any]:
-    """Interacts with OpenRouter AI (google/gemma-4-26b-a4b-it:free) as WildXbaba.
-    Maintains multi-turn context, preserves reasoning_details, and parses autonomous actions.
-    """
-    # Context regarding any matching goods from UNICORN GOODS
-    lib_context = ""
-    if matched_products:
-        lib_context = "\n[UNICORN GOODS LIBRARY MATCHES FOR USER'S QUERY]:\n"
-        for idx, p in enumerate(matched_products, start=1):
-            p_title = p.get("title", "Untitled")
-            p_cat = p.get("category", "General")
-            p_desc = (p.get("desc") or "").strip()[:80]
-            lib_context += f"{idx}. Title: {p_title} | Category: {p_cat} | Info: {p_desc}\n"
-        lib_context += (
-            "Tell the user happily that these materials are ready in UNICORN GOODS "
-            "and they can tap the download button below!\n"
-        )
+async def execute_catalog_search(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str, is_group: bool
+) -> None:
+    """Fast, deterministic search executing against Firebase RTDB for groups and private chats."""
+    msg = update.effective_message
+    bot_username = context.bot.username or "Unicorngoods_bot"
+    products = await FirebaseRTDB.get_products()
+    matched = find_matching_products(query_text, products)
 
-    system_content = (
-        f"You are {AI_NAME}, the official, super friendly AI companion for UNICORN GOODS "
-        f"(a free digital download library for study materials, notes, APKs, PC software, and utilities).\n\n"
-        f"Persona:\n"
-        f"- Talk like a real, cool, caring friend/brother ('ek dost ki tarah baat karna') to {user_name}.\n"
-        f"- Use casual Hinglish/Hindi/English (e.g. 'Arre bhai', 'Haan dost', 'Bolo kya chahiye', 'Main hu na', 'Befikar reh').\n"
-        f"- Keep replies short, conversational, and energetic (2 to 4 sentences).\n\n"
-        f"Autonomous Actions:\n"
-        f"- If the user asks to upload, add, or request an item (e.g. 'bhai ye book upload kardo', 'can you add this apk?'):\n"
-        f"  Assure them warmly, and append on a separate final line:\n"
-        f"  [ACTION:REQUEST|<ItemName>|<Category>|<Details>]\n"
-        f"  (Category must be one of: Study Material, Notes, APK, Software, Tools, Other)\n\n"
-        f"- If the user reports a broken link, corrupted file, or issue (e.g. 'link error de raha hai', 'download broken hai'):\n"
-        f"  Comfort them that it's being reported to the team to fix, and append on a separate final line:\n"
-        f"  [ACTION:REPORT|<Reason>|<Details>]\n"
-        f"{lib_context}"
-    )
+    # -------------------------------------------------------------------------
+    # A. GROUP CHAT SEARCH RESULTS
+    # -------------------------------------------------------------------------
+    if is_group:
+        if matched:
+            result_lines = []
+            buttons = []
+            for idx, p in enumerate(matched[:3], 1):
+                title = p.get("title", "Item")
+                cat = p.get("category", "General")
+                file_url = (p.get("fileUrl") or p.get("downloadUrl") or p.get("link") or "").strip()
+                result_lines.append(f"<b>{idx}. {html.escape(title)}</b> [<code>{html.escape(cat)}</code>]")
 
-    # Initialize or fetch user history
-    history = AI_CHAT_MEMORY.get(user_id, [])
-    if len(history) > 8:
-        history = history[-8:]
+                row = []
+                if file_url and file_url.startswith("http"):
+                    row.append(InlineKeyboardButton(f"📥 Download #{idx} ↗", url=file_url))
+                row.append(InlineKeyboardButton(f"📄 View in DM ↗", url=f"https://t.me/{bot_username}?start=prod_{p.get('id')}"))
+                buttons.append(row)
 
-    messages = [{"role": "system", "content": system_content}]
-    for h in history:
-        msg_obj = {"role": h["role"], "content": h["content"]}
-        if "reasoning_details" in h and h["reasoning_details"]:
-            msg_obj["reasoning_details"] = h["reasoning_details"]
-        messages.append(msg_obj)
+            buttons.append([
+                InlineKeyboardButton("🌐 Web Storefront ↗", url="https://unicorngoods.vercel.app"),
+                InlineKeyboardButton("🦄 Open Bot in DM ↗", url=f"https://t.me/{bot_username}?start=menu"),
+            ])
 
-    messages.append({"role": "user", "content": user_query})
-
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://unicorn-goods.web.app",
-        "X-Title": "UNICORN GOODS Telegram Bot",
-    }
-
-    models_to_try = [PRIMARY_AI_MODEL] + FALLBACK_AI_MODELS
-    chosen_reply = ""
-    reasoning_details = None
-
-    async with httpx.AsyncClient(timeout=25.0) as client:
-        for model_name in models_to_try:
-            try:
-                payload = {
-                    "model": model_name,
-                    "messages": messages,
-                    "reasoning": {"enabled": True},
-                }
-                res = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    choice = data["choices"][0]["message"]
-                    chosen_reply = choice.get("content", "").strip()
-                    reasoning_details = choice.get("reasoning_details")
-                    break
-                elif res.status_code == 429:
-                    logger.warning(f"Model {model_name} rate limited, trying fallback...")
-                    continue
-                else:
-                    logger.warning(f"Model {model_name} returned status {res.status_code}")
-                    continue
-            except Exception as e:
-                logger.warning(f"Error calling {model_name}: {e}")
-                continue
-
-    if not chosen_reply:
-        if matched_products:
-            chosen_reply = (
-                f"Arre {user_name} bhai! Main yahan hu! Mujhe teri query se match hone wale "
-                f"materials mil gaye hain. Neeche diye gaye button se direct download kar le dost! 🚀"
+            reply_text = (
+                f"🔍 <b>Search Results for:</b> <code>{html.escape(query_text)}</code>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                + "\n".join(result_lines)
+                + "\n\n👉 <i>Tap below to download directly or view full details in private DM:</i>"
+            )
+            await msg.reply_text(
+                reply_text,
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                disable_web_page_preview=True,
             )
         else:
-            chosen_reply = (
-                f"Arre {user_name} bhai! Bolo kya chahiye? Main WildXbaba hu. Koi study material, "
-                f"notes, APK ya software chahiye toh naam batao, main nikaal ke deta hu! 😎"
+            safe_q = re.sub(r"[^a-zA-Z0-9_\- ]", "", query_text).strip().replace(" ", "_")
+            buttons = [
+                [InlineKeyboardButton(f"➕ Request '{query_text[:20]}' in DM ↗", url=f"https://t.me/{bot_username}?start=req_prefill_{safe_q[:25]}")],
+                [InlineKeyboardButton("🌐 Search on Web Storefront ↗", url="https://unicorngoods.vercel.app")],
+            ]
+            reply_text = (
+                f"❌ No materials found matching '<b>{html.escape(query_text)}</b>' in the library.\n\n"
+                "💡 You can request this item from our admin team via our private bot!"
             )
+            await msg.reply_text(
+                reply_text,
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(buttons),
+            )
+        return
 
-    # Update conversation memory
-    updated_history = list(history)
-    updated_history.append({"role": "user", "content": user_query})
-    assistant_msg: Dict[str, Any] = {"role": "assistant", "content": chosen_reply}
-    if reasoning_details:
-        assistant_msg["reasoning_details"] = reasoning_details
-    updated_history.append(assistant_msg)
-    AI_CHAT_MEMORY[user_id] = updated_history[-8:]
+    # -------------------------------------------------------------------------
+    # B. PRIVATE CHAT SEARCH RESULTS
+    # -------------------------------------------------------------------------
+    if len(matched) == 1:
+        await show_product_detail(update, matched[0]["id"])
+    elif len(matched) > 1:
+        buttons = []
+        res_lines = []
+        for idx, p in enumerate(matched[:5], 1):
+            p_title = p.get("title", "Item")
+            p_cat = p.get("category", "General")
+            file_url = (p.get("fileUrl") or p.get("downloadUrl") or p.get("link") or "").strip()
+            res_lines.append(f"<b>{idx}. {html.escape(p_title)}</b> [<code>{html.escape(p_cat)}</code>]")
 
-    # Parse actions
-    clean_text = chosen_reply
-    parsed_action = None
+            row = []
+            if file_url and file_url.startswith("http"):
+                row.append(InlineKeyboardButton(f"📥 Download #{idx} ↗", url=file_url))
+            row.append(InlineKeyboardButton(f"📄 Details #{idx}", callback_data=f"view_prod:{p['id']}"))
+            buttons.append(row)
 
-    req_match = re.search(r"\[ACTION:REQUEST\|(.*?)\|(.*?)\|(.*?)\]", clean_text)
-    rep_match = re.search(r"\[ACTION:REPORT\|(.*?)\|(.*?)\]", clean_text)
+        buttons.append([InlineKeyboardButton("➕ Request Another Item", callback_data="nav:request")])
+        buttons.append([InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")])
 
-    if req_match:
-        parsed_action = {
-            "type": "REQUEST",
-            "item": req_match.group(1).strip(),
-            "category": req_match.group(2).strip(),
-            "details": req_match.group(3).strip(),
-        }
-        clean_text = re.sub(r"\[ACTION:REQUEST\|.*?\]", "", clean_text).strip()
-    elif rep_match:
-        parsed_action = {
-            "type": "REPORT",
-            "reason": rep_match.group(1).strip(),
-            "details": rep_match.group(2).strip(),
-        }
-        clean_text = re.sub(r"\[ACTION:REPORT\|.*?\]", "", clean_text).strip()
-
-    return {
-        "text": clean_text,
-        "action": parsed_action,
-    }
+        reply_text = (
+            f"🔍 <b>Found {len(matched)} matching materials for '<code>{html.escape(query_text)}</code>':</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            + "\n".join(res_lines)
+            + "\n\n👉 <i>Select an option below:</i>"
+        )
+        await msg.reply_text(
+            reply_text,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            disable_web_page_preview=True,
+        )
+    else:
+        safe_q = query_text[:30]
+        reply_text = (
+            f"🔍 No materials found matching '<b>{html.escape(query_text)}</b>' in UNICORN GOODS library.\n\n"
+            "Would you like our admin team to upload this item for you?"
+        )
+        buttons = [
+            [InlineKeyboardButton(f"➕ Request '{safe_q[:20]}'", callback_data=f"req_prefill:{safe_q}")],
+            [InlineKeyboardButton("📚 Browse Categories", callback_data="nav:categories")],
+            [InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")],
+        ]
+        await msg.reply_text(
+            reply_text,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
 
 
 async def handle_user_text_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles text messages by chatting with WildXbaba AI & recommending goods."""
+    """Handles direct text messages typed by users in groups or private chats."""
     user = update.effective_user
     msg = update.effective_message
+    chat = update.effective_chat
     if not msg or not msg.text:
         return
 
-    # Track user for broadcasts
+    query_text = msg.text.strip()
+    is_group = chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]
+    bot_username = (context.bot.username or "Unicorngoods_bot").lower()
+
+    # -------------------------------------------------------------------------
+    # A. GROUP CHATS: Only reply when explicitly called or replied to
+    # -------------------------------------------------------------------------
+    if is_group:
+        is_reply_to_bot = (
+            msg.reply_to_message
+            and msg.reply_to_message.from_user
+            and msg.reply_to_message.from_user.id == context.bot.id
+        )
+        is_mentioned = f"@{bot_username}" in query_text.lower()
+
+        if not (is_reply_to_bot or is_mentioned):
+            return
+
+        clean_text = re.sub(rf"@{bot_username}", "", query_text, flags=re.I).strip()
+        if not clean_text:
+            await msg.reply_text(
+                "🔍 <b>How to search in this group:</b>\n"
+                "Type: <code>/search &lt;item name&gt;</code>\n"
+                "<i>Example:</i> <code>/search CapCut</code> or <code>/search NEET Notes</code>",
+                parse_mode=constants.ParseMode.HTML,
+            )
+            return
+
+        await execute_catalog_search(update, context, clean_text, is_group=True)
+        return
+
+    # -------------------------------------------------------------------------
+    # B. PRIVATE CHATS: Universal Search & Quick Greetings
+    # -------------------------------------------------------------------------
     await FirebaseRTDB.register_bot_user(user)
 
-    # Check force-subscribe
     is_member = await check_channel_membership(user.id, context.bot)
     if not is_member:
         await send_fsub_prompt(update, context)
         return
 
-    query_text = msg.text.strip()
-    if query_text.startswith("/"):
-        # If it's /ai or /ask, strip the command
-        if query_text.startswith("/ai ") or query_text.startswith("/ask "):
-            query_text = query_text.split(" ", 1)[1].strip()
-        else:
-            return  # Handled by other commands
+    q_lower = query_text.lower()
+    if q_lower in ["hi", "hello", "hey", "hlo", "yo", "namaste", "pranam"]:
+        welcome_text = (
+            f"👋 <b>Hello {html.escape(user.first_name or 'Friend')}!</b>\n\n"
+            "Welcome to <b>UNICORN GOODS</b>! 🦄\n"
+            "How can I help you today?\n\n"
+            "• Type any subject, book, or software name to search instantly!\n"
+            "• Or browse through the categories below:"
+        )
+        buttons = [
+            [
+                InlineKeyboardButton("📚 Browse Categories", callback_data="nav:categories"),
+                InlineKeyboardButton("🔍 Search Library", callback_data="nav:search"),
+            ],
+            [
+                InlineKeyboardButton("➕ Request Any Item", callback_data="nav:request"),
+                InlineKeyboardButton("⭐ My Saved Goods", callback_data="nav:saved"),
+            ],
+            [InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")],
+        ]
+        await msg.reply_text(
+            welcome_text,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+        return
 
-    # Send typing action
     try:
         await context.bot.send_chat_action(chat_id=msg.chat_id, action=constants.ChatAction.TYPING)
     except Exception:
         pass
 
-    # Find matching products from library
-    products = await FirebaseRTDB.get_products()
-    matched = find_matching_products(query_text, products)
+    await execute_catalog_search(update, context, query_text, is_group=False)
 
-    # Ask WildXbaba AI
-    ai_result = await ask_wildxbaba_ai(
-        user_id=user.id,
-        user_name=user.first_name or "Dost",
-        user_query=query_text,
-        matched_products=matched,
+
+async def handle_user_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Guides users to text search or item request when photos are sent."""
+    user = update.effective_user
+    msg = update.effective_message
+    chat = update.effective_chat
+    if not msg or not msg.photo:
+        return
+
+    is_group = chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]
+    if is_group:
+        return
+
+    await FirebaseRTDB.register_bot_user(user)
+    is_member = await check_channel_membership(user.id, context.bot)
+    if not is_member:
+        await send_fsub_prompt(update, context)
+        return
+
+    if msg.caption:
+        await execute_catalog_search(update, context, msg.caption.strip(), is_group=False)
+        return
+
+    reply_text = (
+        "📸 <b>Photo received!</b>\n\n"
+        "To search for books, notes, APKs, or software, please type its name directly in chat "
+        "(e.g. <code>NEET Physics Notes</code> or <code>CapCut Pro</code>).\n\n"
+        "If you need an item that isn't yet available, tap below to submit a request:"
     )
-
-    reply_text = ai_result["text"]
-    action = ai_result.get("action")
-
-    extra_notice = ""
-    # Execute autonomous request action
-    if action and action["type"] == "REQUEST":
-        req_name = action.get("item") or query_text
-        req_cat = action.get("category") or "Study Material"
-        req_det = action.get("details") or "Requested via WildXbaba AI chat"
-        payload = {
-            "itemName": req_name,
-            "userName": user.full_name or user.username or f"User_{user.id}",
-            "category": req_cat,
-            "details": req_det,
-            "status": "pending",
-            "adminReply": "",
-            "timestamp": int(time.time() * 1000),
-            "telegramUserId": user.id,
-            "telegramUsername": f"@{user.username}" if user.username else "",
-        }
-        req_id = await FirebaseRTDB.post("requests", payload)
-        ticket_no = req_id[-6:].upper() if req_id else "SUBMITTED"
-        extra_notice = (
-            f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎫 <b>Item Request Ticket:</b> <code>#REQ-{ticket_no}</code>\n"
-            f"📦 <b>Material:</b> {html.escape(req_name)} [<code>{html.escape(req_cat)}</code>]\n"
-            f"🔔 <i>Admin upload hote hi aapko is bot par update DM mil jayega!</i>"
-        )
-
-    # Execute autonomous report action
-    elif action and action["type"] == "REPORT":
-        rep_reason = action.get("reason") or "Broken Link"
-        rep_det = action.get("details") or "Reported via WildXbaba AI chat"
-        payload = {
-            "productId": "GENERAL",
-            "productTitle": "User AI Report",
-            "userName": user.full_name or user.username or f"User_{user.id}",
-            "reason": rep_reason,
-            "issue": rep_det,
-            "status": "pending",
-            "adminReply": "",
-            "timestamp": int(time.time() * 1000),
-            "telegramUserId": user.id,
-            "telegramUsername": f"@{user.username}" if user.username else "",
-        }
-        rep_id = await FirebaseRTDB.post("reports", payload)
-        ticket_no = rep_id[-6:].upper() if rep_id else "REP-OK"
-        extra_notice = (
-            f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🚨 <b>Issue Report Ticket:</b> <code>#REP-{ticket_no}</code>\n"
-            f"📌 <b>Reason:</b> {html.escape(rep_reason)}\n"
-            f"🛠️ <i>Humari team ise promptly investigate aur fix karegi!</i>"
-        )
-
-    full_message = f"🤖 <b>WildXbaba:</b>\n{html.escape(reply_text)}{extra_notice}"
-
-    # Build interactive buttons
-    buttons = []
-    if matched:
-        for p in matched[:3]:
-            p_title = p.get("title", "Item")[:30]
-            buttons.append([InlineKeyboardButton(f"📥 GET NOW: {p_title}", callback_data=f"view_prod:{p['id']}")])
-
-    buttons.append([
-        InlineKeyboardButton("➕ Request Item", callback_data="nav:request"),
-        InlineKeyboardButton("📋 My Activity", callback_data="nav:activity"),
-    ])
-    buttons.append([InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")])
-
+    buttons = [
+        [InlineKeyboardButton("🔍 Search Library", callback_data="nav:search")],
+        [InlineKeyboardButton("➕ Request Material", callback_data="nav:request")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")],
+    ]
     await msg.reply_text(
-        full_message,
+        reply_text,
         parse_mode=constants.ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup(buttons),
-        disable_web_page_preview=True,
+    )
+
+
+async def handle_user_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles audio messages sent by users."""
+    user = update.effective_user
+    msg = update.effective_message
+    chat = update.effective_chat
+    if not msg:
+        return
+
+    is_group = chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]
+    if is_group:
+        return
+
+    await FirebaseRTDB.register_bot_user(user)
+    is_member = await check_channel_membership(user.id, context.bot)
+    if not is_member:
+        await send_fsub_prompt(update, context)
+        return
+
+    if msg.caption:
+        await execute_catalog_search(update, context, msg.caption.strip(), is_group=False)
+        return
+
+    reply_text = (
+        "🎙️ <b>Voice note received!</b>\n\n"
+        "Please type the material or app name directly in chat to search our library "
+        "(e.g. <code>CapCut</code>, <code>NEET Notes</code>, <code>Kinemaster</code>).\n\n"
+        "You can also request missing materials using the button below:"
+    )
+    buttons = [
+        [InlineKeyboardButton("🔍 Search Library", callback_data="nav:search")],
+        [InlineKeyboardButton("➕ Request Material", callback_data="nav:request")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="nav:menu")],
+    ]
+    await msg.reply_text(
+        reply_text,
+        parse_mode=constants.ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(buttons),
     )
 
 # -----------------------------------------------------------------------------
 # 9. REQUEST MATERIAL FLOW (CONVERSATION HANDLER)
 # -----------------------------------------------------------------------------
 async def start_request_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    chat = update.effective_chat
+    if chat and chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]:
+        bot_username = context.bot.username or "Unicorngoods_bot"
+        prompt = (
+            "➕ <b>Request Study Material or Software</b>\n\n"
+            "To submit a material request without cluttering this group, please tap below to open our 1-on-1 private chat:"
+        )
+        buttons = [
+            [InlineKeyboardButton("➕ Submit Request in DM ↗", url=f"https://t.me/{bot_username}?start=request")],
+        ]
+        if update.callback_query:
+            await update.callback_query.answer()
+        await update.effective_message.reply_text(
+            prompt,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+        return ConversationHandler.END
+
     query = update.callback_query
     prefill = ""
     if query and query.data.startswith("req_prefill:"):
@@ -946,6 +1162,25 @@ async def cancel_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 # 10. REPORT ISSUE FLOW (CONVERSATION HANDLER)
 # -----------------------------------------------------------------------------
 async def start_report_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    chat = update.effective_chat
+    if chat and chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]:
+        bot_username = context.bot.username or "Unicorngoods_bot"
+        prompt = (
+            "⚠️ <b>Report Broken File or Link</b>\n\n"
+            "To submit an issue report privately without cluttering this group, please tap below to open our 1-on-1 private chat:"
+        )
+        buttons = [
+            [InlineKeyboardButton("⚠️ Submit Report in DM ↗", url=f"https://t.me/{bot_username}?start=report")],
+        ]
+        if update.callback_query:
+            await update.callback_query.answer()
+        await update.effective_message.reply_text(
+            prompt,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+        return ConversationHandler.END
+
     query = update.callback_query
     pid = ""
     if query and query.data.startswith("report_item:"):
@@ -1223,29 +1458,41 @@ async def show_announcements(target) -> None:
     await render_text_response(target, text, reply_markup=InlineKeyboardMarkup(buttons))
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
     user = update.effective_user
-    is_member = await check_channel_membership(user.id, context.bot)
-    if not is_member:
-        await send_fsub_prompt(update, context)
-        return
+    msg = update.effective_message
+    is_group = chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]
+
+    if not is_group:
+        is_member = await check_channel_membership(user.id, context.bot)
+        if not is_member:
+            await send_fsub_prompt(update, context)
+            return
 
     query_text = " ".join(context.args).strip() if context.args else ""
     if query_text:
-        update.effective_message.text = query_text
-        await handle_user_text_search(update, context)
+        await execute_catalog_search(update, context, query_text, is_group=is_group)
     else:
-        text = (
-            "🔍 <b>Universal Material Search</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "Simply type ANY book, note, app or tool name directly into this chat!\n\n"
-            "<i>Or search with:</i> <code>/search &lt;item name&gt;</code>\n\n"
-            "⚡ <i>Go ahead and type whatever you are looking for!</i>"
-        )
-        await update.effective_message.reply_text(
-            text,
-            parse_mode=constants.ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")]])
-        )
+        if is_group:
+            text = (
+                "🔍 <b>How to search in this group:</b>\n\n"
+                "Type: <code>/search &lt;item name&gt;</code>\n"
+                "<i>Example:</i> <code>/search CapCut</code> or <code>/search NEET Notes</code>"
+            )
+            await msg.reply_text(text, parse_mode=constants.ParseMode.HTML)
+        else:
+            text = (
+                "🔍 <b>Universal Material Search</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "Simply type ANY book, note, app or tool name directly into this chat!\n\n"
+                "<i>Or search with:</i> <code>/search &lt;item name&gt;</code>\n\n"
+                "⚡ <i>Go ahead and type whatever you are looking for!</i>"
+            )
+            await msg.reply_text(
+                text,
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Menu", callback_data="nav:menu")]])
+            )
 
 async def activity_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -1297,10 +1544,10 @@ async def callback_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE
         if is_member:
             await query.answer("🎉 Verification successful! Welcome to UNICORN GOODS.", show_alert=True)
             welcome_text = (
-                f"👋 <b>Welcome, {html.escape(user.first_name)}!</b>\n\n"
-                "🦄 <b>UNICORN GOODS Main Menu & AI Hub</b>\n"
-                "<i>Curated Free Digital Download Hub</i>\n\n"
-                "🤖 Chat with <b>WildXbaba AI</b> directly by typing in this chat anytime!\n"
+                f"👋 <b>Welcome, {html.escape(user.first_name or 'Friend')}!</b>\n\n"
+                "🦄 <b>UNICORN GOODS — Main Menu</b>\n"
+                "<i>Curated Free Digital Download Library & Study Hub</i>\n\n"
+                "🔍 Type any book, note, APK or software name directly in chat to search!\n"
                 "👇 Or choose a category below to explore:"
             )
             await query.edit_message_text(
@@ -1566,8 +1813,6 @@ def main() -> None:
     # Basic Commands
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("menu", start_command))
-    application.add_handler(CommandHandler("ai", handle_user_text_search))
-    application.add_handler(CommandHandler("ask", handle_user_text_search))
     application.add_handler(CommandHandler("search", search_command))
     application.add_handler(CommandHandler("activity", activity_command))
     application.add_handler(CommandHandler("saved", saved_command))
@@ -1579,15 +1824,16 @@ def main() -> None:
     # Callback Query Dispatcher
     application.add_handler(CallbackQueryHandler(callback_dispatcher))
 
-    # Universal Text Auto-Search Handler (Any text message)
+    # Universal Text, Photo & Audio Message Handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_text_search))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_user_photo))
+    application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_user_audio))
 
     # Start background notification worker and register Telegram Bot menu commands
     async def post_init(app):
         try:
             await app.bot.set_my_commands([
-                BotCommand("start", "Open main menu & explore materials"),
-                BotCommand("ai", "Chat with WildXbaba AI companion"),
+                BotCommand("start", "Open main menu & library"),
                 BotCommand("menu", "Browse materials by category"),
                 BotCommand("search", "Search books, notes, APKs & tools"),
                 BotCommand("request", "Request missing study material or app"),
